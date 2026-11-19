@@ -183,3 +183,7 @@ def test_employee_counts_follow_board_filter(client):
     assert one["total_employees"] == one["active_employees"] + one["inactive_employees"]
     lst = client.get("/api/v1/employees", params={**ALL, "jira_board": boards[0]}).json()
     assert len(lst["all"]) == one["total_employees"] and set(lst["inactive"]) <= set(lst["all"])
+    # the Employee filter options follow the board too
+    scoped = client.get("/api/v1/meta/dimensions", params={"jira_board": boards[0]}).json()
+    assert set(scoped["employees"]) == set(lst["all"]) and len(scoped["employees"]) < len(dims["employees"])
+    assert scoped["jira_boards"] == dims["jira_boards"]  # board list itself stays complete

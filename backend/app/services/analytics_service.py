@@ -826,15 +826,26 @@ class AnalyticsEngine:
             "releases": records(rel_rows.sort_values("release_date")) if len(rel_rows) else [],
         }
 
-    def dimension_values(self) -> Dict[str, Any]:
+    def dimension_values(self, scope: Optional[Filters] = None) -> Dict[str, Any]:
         a = self.store.activities()
         reps = self.store.reports()
+        if scope is not None and scope.jira_board:
+            board_scope = Filters(jira_board=list(scope.jira_board))
+            a = apply_activity_filters(a, board_scope, ignore_date=True)
+            reps = apply_report_filters(reps, board_scope, None, ignore_date=True)
 
         def uniq(df: pd.DataFrame, col: str) -> List[str]:
             return sorted({str(x) for x in df[col].dropna() if str(x).strip()}) if len(df) and col in df else []
 
+        employees = sorted(set(uniq(a, "employee")) | set(uniq(reps, "employee")))
+        if scope is not None and scope.jira_board:
+            # in Jira mode the board configuration (people mapping) defines who belongs to the board
+            members = self.board_members(list(scope.jira_board))
+            if members is not None:
+                employees = members
+
         return {
-            "employees": sorted(set(uniq(a, "employee")) | set(uniq(reps, "employee"))),
+            "employees": employees,
             "projects": sorted(set(uniq(a, "project")) | set(uniq(reps, "project"))),
             "applications": uniq(a, "application"),
             "jira_boards": sorted(set(uniq(a, "jira_board")) | set(uniq(reps, "jira_board"))),

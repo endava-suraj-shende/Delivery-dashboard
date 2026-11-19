@@ -1,7 +1,7 @@
 ﻿"""Employee, project, Jira, deployment, dashboard, search and config endpoints."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -306,8 +306,14 @@ async def global_search(q: str = Query(..., min_length=1), limit: int = Query(10
 
 
 @meta.get("/dimensions")
-async def dimensions(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.analytics.dimension_values()
+async def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    """Filter options. When boards are given, employees / projects / sprints are limited to those boards."""
+    dims = c.analytics.dimension_values()
+    boards = [b for b in (jira_board or []) if b and b.strip()]
+    if boards:
+        scoped = c.analytics.dimension_values(Filters(jira_board=boards))
+        dims = {**dims, "employees": scoped["employees"], "projects": scoped["projects"], "sprints": scoped["sprints"]}
+    return dims
 
 
 @meta.get("/presets")
