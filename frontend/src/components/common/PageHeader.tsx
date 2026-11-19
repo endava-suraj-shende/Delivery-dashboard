@@ -127,6 +127,16 @@ export function GlobalFilterBar({ showStatus = true, showDeployment = true, comp
   const opt = (vals: string[] | undefined) => (vals ?? []).map((v) => ({ value: v, label: v }))
   const cat = (vals: { key: string; label: string; color: string }[] | undefined) => (vals ?? []).map((v) => ({ value: v.key, label: v.label, color: colorFor(v.color) }))
   const set = (k: ListKey) => (v: string[]) => setList(k, v)
+  // When the board changes, drop employee / sprint selections that no longer belong to the selected board(s).
+  useEffect(() => {
+    if (!dims || !filters.jira_board.length) return
+    const emp = new Set(dims.employees.map((e) => e.toLowerCase()))
+    const keepEmp = filters.employee.filter((e) => emp.has(e.toLowerCase()))
+    if (keepEmp.length !== filters.employee.length) setList('employee', keepEmp)
+    const spr = new Set((dims.sprints ?? []).map((s) => s.toLowerCase()))
+    const keepSpr = filters.sprint.filter((s) => spr.has(s.toLowerCase()))
+    if (keepSpr.length !== filters.sprint.length) setList('sprint', keepSpr)
+  }, [dims, filters.jira_board, filters.employee, filters.sprint, setList])
   return (
     <div className="space-y-2 no-print">
       <div className="flex flex-wrap items-center gap-2">

@@ -213,7 +213,7 @@ export const deploymentApi = {
 }
 
 export const metaApi = {
-  dimensions: () => api.get<Dimensions>('/meta/dimensions').then((r) => r.data),
+  dimensions: (boards: string[] = []) => api.get<Dimensions>('/meta/dimensions', { params: { jira_board: boards }, paramsSerializer: { indexes: null } }).then((r) => r.data),
   search: (query: string) => api.get<SearchResult>(`/search?q=${encodeURIComponent(query)}`).then((r) => r.data),
   appConfig: () => api.get<AppConfig>('/config/app').then((r) => r.data),
 }

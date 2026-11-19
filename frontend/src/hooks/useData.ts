@@ -7,7 +7,9 @@ export function useDataStatus() {
 }
 
 export function useDimensions() {
-  return useQuery({ queryKey: ['meta', 'dimensions'], queryFn: metaApi.dimensions, staleTime: 60_000 })
+  const { filters } = useFilters()
+  const boards = filters.jira_board
+  return useQuery({ queryKey: ['meta', 'dimensions', boards], queryFn: () => metaApi.dimensions(boards), staleTime: 60_000, placeholderData: (p) => p })
 }
 
 export function useAppConfig() {
