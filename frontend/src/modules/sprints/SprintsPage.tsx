@@ -76,7 +76,7 @@ export default function SprintsPage() {
     return p.toString()
   }, [queryString])
   const list = useQuery({ queryKey: ['sprints', listQs], queryFn: () => sprintApi.list(listQs) })
-  const [velocityView, setVelocityView] = useState<string>('last:5')
+  const [velocityView, setVelocityView] = useState<string>('last:10')
   const [velocityUnit, setVelocityUnit] = useState<'points' | 'tickets' | null>(null)
   const items = useMemo(() => list.data?.items ?? [], [list.data])
   const names = useMemo(() => new Set(items.map((s) => s.name)), [items])
