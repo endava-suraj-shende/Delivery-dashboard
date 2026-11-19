@@ -17,9 +17,28 @@ def register_handlers(c: "Container") -> None:
         c.analytics.invalidate()
         c.bus.publish(Events.CACHE_INVALIDATED, reason=event.name)
         log.info("Data loaded: %s", {k: v for k, v in event.payload.items() if k in ("source", "files", "parsed", "failed", "duration_ms")})
+        import threading
+        threading.Thread(target=_warm_cache, name="analytics-warm", daemon=True).start()
         if c.data.mode != "jira" and c.jira.configured and c.jira.auto_sync:
-            import threading
             threading.Thread(target=_safe_sync, name="jira-auto-sync", daemon=True).start()
+
+    def _warm_cache() -> None:
+        """Precompute the default-period views (overall + per board) so the first page open is instant."""
+        import time
+        from app.services.filter_service import Filters
+        t0 = time.time()
+        try:
+            boards = [None] + [b.label or b.board_name for b in c.jira_boards.enabled()] if c.data.mode != "excel" else [None]
+            catalogue = list(c.jira_source.stats.sprints or [])
+            for b in boards:
+                f = c.analytics.resolve_filters(Filters(jira_board=[b] if b else []))
+                c.analytics.overview(f)
+                c.analytics.data_quality(f)
+                c.analytics.tickets_view(f)
+                c.analytics.sprint_table(f, catalogue)
+            log.info("Analytics cache warmed for %d scope(s) in %.1fs", len(boards), time.time() - t0)
+        except Exception as exc:  # noqa: BLE001 - warming is best effort
+            log.debug("Cache warm-up skipped: %s", exc)
 
     def on_boards_changed(event: Event) -> None:
         c.analytics.invalidate()

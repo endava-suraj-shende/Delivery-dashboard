@@ -1,4 +1,4 @@
-"""Reconcile Excel work items with live Jira issues.
+﻿"""Reconcile Excel work items with live Jira issues.
 
 Excel remains the source of truth for all KPIs; this service produces a *side-by-side*
 comparison so Delivery Managers can see where the bi-weekly sheets and Jira disagree.
@@ -12,7 +12,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
@@ -70,6 +70,8 @@ class JiraReconcileService:
         self._last_errors: List[Dict[str, str]] = []
         self._sync_version = 0
         self._store_version_synced = -1
+        # set by the container; when the data already comes from Jira there is nothing to reconcile against
+        self.source_mode: Callable[[], str] = lambda: "excel"
 
     # ------------------------------------------------------------------ status
     @property
@@ -260,6 +262,8 @@ class JiraReconcileService:
         return self.status()
 
     def ensure_synced(self) -> None:
+        if self.source_mode() == "jira":
+            return  # dashboards are built from Jira already; the Excel-vs-Jira sync would only re-download the site
         if self.configured and self.auto_sync and (self._last_sync is None or self._store_version_synced != self.store.version):
             try:
                 self.sync()
@@ -332,7 +336,7 @@ class JiraReconcileService:
             if excel_board and issue.project_key:
                 cfg = self.registry.by_excel_name(excel_board)
                 if cfg and cfg.project_key and cfg.project_key.upper() != issue.project_key.upper():
-                    flag("board_mismatch", f"issue project {issue.project_key}, sheet board '{excel_board}' → {cfg.project_key}")
+                    flag("board_mismatch", f"issue project {issue.project_key}, sheet board '{excel_board}' â†’ {cfg.project_key}")
             try:
                 upd = pd.Timestamp(issue.updated).tz_localize(None) if issue.updated else None
                 if upd is not None and row["report_date"] == row["report_date"] and upd.normalize() > pd.Timestamp(row["report_date"]).normalize() and excel_cat not in COMPLETED:

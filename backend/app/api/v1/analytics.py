@@ -37,7 +37,7 @@ def _resolve_name(values: list, name: str, kind: str) -> str:
 
 # ---------------------------------------------------------------- employees
 @employees.get("")
-async def list_employees(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def list_employees(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     all_names = c.analytics.roster(f)
     active = {e["employee"] for e in ov["employees"]}
@@ -48,7 +48,7 @@ async def list_employees(f: Filters = Depends(filters), c: Container = Depends(l
 
 
 @employees.get("/performance")
-async def employees_performance(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def employees_performance(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     """Team delivery status + per-employee ratings for the current and previous period."""
     ov = c.analytics.overview(f)
     rf = c.analytics.resolve_filters(f)
@@ -66,7 +66,7 @@ async def employees_performance(f: Filters = Depends(filters), c: Container = De
 
 
 @employees.get("/{name}/summary")
-async def employee_summary(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def employee_summary(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     name = _resolve_name(c.analytics.dimension_values()["employees"], name, "Employee")
     ov = c.analytics.overview(_with(f, employee=[name]))
     reps = c.store.reports()
@@ -78,7 +78,7 @@ async def employee_summary(name: str, f: Filters = Depends(filters), c: Containe
 
 
 @employees.get("/{name}/activities")
-async def employee_activities(name: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1000),
+def employee_activities(name: str, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1000),
                               sort: Optional[str] = None, desc: bool = True,
                               f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     name = _resolve_name(c.analytics.dimension_values()["employees"], name, "Employee")
@@ -86,7 +86,7 @@ async def employee_activities(name: str, page: int = Query(1, ge=1), page_size: 
 
 
 @employees.get("/{name}/performance")
-async def employee_performance(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def employee_performance(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     name = _resolve_name(c.analytics.dimension_values()["employees"], name, "Employee")
     ff = _with(f, employee=[name])
     cur = c.analytics.overview(ff)
@@ -108,13 +108,13 @@ async def employee_performance(name: str, f: Filters = Depends(filters), c: Cont
 
 # ---------------------------------------------------------------- projects
 @projects.get("")
-async def list_projects(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def list_projects(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     return {"period": ov["period"], "items": ov["projects"], "all": c.analytics.dimension_values()["projects"]}
 
 
 @projects.get("/{name}/summary")
-async def project_summary(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def project_summary(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     name = _resolve_name(c.analytics.dimension_values()["projects"], name, "Project")
     ff = _with(f, project=[name])
     ov = c.analytics.overview(ff)
@@ -123,7 +123,7 @@ async def project_summary(name: str, f: Filters = Depends(filters), c: Container
 
 
 @projects.get("/{name}/employees")
-async def project_employees(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def project_employees(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     name = _resolve_name(c.analytics.dimension_values()["projects"], name, "Project")
     ov = c.analytics.overview(_with(f, project=[name]))
     return {"project": name, "period": ov["period"], "items": ov["employees"]}
@@ -135,7 +135,7 @@ def _sprint_catalogue(c: Container) -> list:
 
 
 @sprints.get("")
-async def list_sprints(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def list_sprints(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     items = c.analytics.sprint_table(f, _sprint_catalogue(c))
     active = next((s["name"] for s in items if s.get("state") == "active"), None)
     # velocity: oldest -> newest, closed + active sprints that have work
@@ -164,7 +164,7 @@ async def list_sprints(f: Filters = Depends(filters), c: Container = Depends(loa
 
 
 @sprints.get("/{name}")
-async def sprint_detail(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def sprint_detail(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     items = c.analytics.sprint_table(f, _sprint_catalogue(c))
     row = next((s for s in items if s["name"].lower() == name.lower()), None)
     if row is None:
@@ -181,14 +181,14 @@ async def sprint_detail(name: str, f: Filters = Depends(filters), c: Container =
 
 # ---------------------------------------------------------------- jira
 @jira.get("/summary")
-async def jira_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def jira_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     return {"period": ov["period"], "filters": ov["filters"], "kpis": ov["kpis"], "charts": ov["charts"],
             "latest_status_rule": ov["latest_status_rule"], "calculation_rules": ov["calculation_rules"]}
 
 
 @jira.get("/status-distribution")
-async def jira_status_distribution(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def jira_status_distribution(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     ch = ov["charts"]
     return {"period": ov["period"], "overall": ch["ticket_status"], "by_employee": ch["status_by_employee"],
@@ -197,12 +197,12 @@ async def jira_status_distribution(f: Filters = Depends(filters), c: Container =
 
 
 @jira.get("/tickets")
-async def jira_tickets(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def jira_tickets(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.analytics.tickets_view(f)
 
 
 @jira.get("/tickets/{ticket_id}")
-async def jira_ticket(ticket_id: str, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def jira_ticket(ticket_id: str, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     detail = c.analytics.ticket_detail(ticket_id)
     if detail is None:
         raise NotFoundError(f"Ticket '{ticket_id}' not found")
@@ -211,7 +211,7 @@ async def jira_ticket(ticket_id: str, c: Container = Depends(loaded_container)) 
 
 # ---------------------------------------------------------------- deployment
 @deployment.get("/dev/summary")
-async def dev_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def dev_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     ch = ov["charts"]
     return {"period": ov["period"], "filters": ov["filters"], "kpis": ov["kpis"], "distribution": ch["dev_deployment"],
@@ -221,7 +221,7 @@ async def dev_summary(f: Filters = Depends(filters), c: Container = Depends(load
 
 
 @deployment.get("/production/summary")
-async def prod_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def prod_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     ch = ov["charts"]
     return {"period": ov["period"], "filters": ov["filters"], "kpis": ov["kpis"], "distribution": ch["prod_deployment"],
@@ -231,14 +231,14 @@ async def prod_summary(f: Filters = Depends(filters), c: Container = Depends(loa
 
 
 @deployment.get("/trends")
-async def deployment_trends(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def deployment_trends(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     return {"period": ov["period"], "activity_trend": ov["charts"]["trend"], "release_trend": ov["charts"]["release_trend"]}
 
 
 # ---------------------------------------------------------------- dashboard
 @dashboard.get("/executive")
-async def executive(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def executive(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     jira_summary = None
     if c.data.mode != "jira" and c.jira.configured and c.jira.status()["last_sync"]:
@@ -259,29 +259,29 @@ async def executive(f: Filters = Depends(filters), c: Container = Depends(loaded
 
 
 @dashboard.get("/team")
-async def team(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def team(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     return {**ov, "tickets": c.analytics.tickets_view(f)["items"], "releases": c.analytics.releases_view(f)["items"]}
 
 
 @dashboard.get("/employee")
-async def employee_dashboard(name: str = Query(...), f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return await employee_summary(name, f, c)
+def employee_dashboard(name: str = Query(...), f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return employee_summary(name, f, c)
 
 
 @dashboard.get("/project")
-async def project_dashboard(name: str = Query(...), f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return await project_summary(name, f, c)
+def project_dashboard(name: str = Query(...), f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return project_summary(name, f, c)
 
 
 @dashboard.get("/activities")
-async def activities(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1000), sort: Optional[str] = None,
+def activities(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=1000), sort: Optional[str] = None,
                      desc: bool = True, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.analytics.activities_view(f, page, page_size, sort, desc)
 
 
 @dashboard.get("/compare")
-async def compare(a_start: str = Query(...), a_end: str = Query(...), b_start: str = Query(...), b_end: str = Query(...),
+def compare(a_start: str = Query(...), a_end: str = Query(...), b_start: str = Query(...), b_end: str = Query(...),
                   f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     from datetime import date
     try:
@@ -293,20 +293,20 @@ async def compare(a_start: str = Query(...), a_end: str = Query(...), b_start: s
 
 
 @dashboard.get("/data-quality")
-async def data_quality(f: Filters = Depends(filters), scope: str = Query("period", description="period | all"),
+def data_quality(f: Filters = Depends(filters), scope: str = Query("period", description="period | all"),
                        c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.analytics.data_quality(None if scope == "all" else c.analytics.resolve_filters(f))
 
 
 # ---------------------------------------------------------------- search / meta
 @search.get("")
-async def global_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50),
+def global_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50),
                         c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.analytics.search(q, limit)
 
 
 @meta.get("/dimensions")
-async def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     """Filter options. When boards are given, employees / projects / sprints are limited to those boards."""
     dims = c.analytics.dimension_values()
     boards = [b for b in (jira_board or []) if b and b.strip()]
@@ -317,7 +317,7 @@ async def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container
 
 
 @meta.get("/presets")
-async def presets() -> Dict[str, Any]:
+def presets() -> Dict[str, Any]:
     from app.services.filter_service import PRESETS, preset_range
     return {"default": "last_15_days",
             "items": [{"key": k, "label": v, "start": s.isoformat() if s else None, "end": e.isoformat() if e else None}
@@ -326,19 +326,19 @@ async def presets() -> Dict[str, Any]:
 
 # ---------------------------------------------------------------- config
 @config.get("/status")
-async def get_status_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def get_status_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.normalizer.get_config()
 
 
 @config.put("/status")
-async def put_status_config(body: StatusConfigUpdate, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def put_status_config(body: StatusConfigUpdate, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     out = c.normalizer.update_config(body.model_dump(exclude_none=True))
     c.bus.publish(Events.STATUS_CONFIG_CHANGED)
     return c.normalizer.get_config()
 
 
 @config.post("/status/mapping")
-async def add_mapping(body: StatusMappingAdd, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def add_mapping(body: StatusMappingAdd, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     try:
         c.normalizer.add_mapping(body.dimension, body.category, body.value)
     except ValueError as exc:
@@ -348,14 +348,14 @@ async def add_mapping(body: StatusMappingAdd, c: Container = Depends(loaded_cont
 
 
 @config.post("/status/reset")
-async def reset_status_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def reset_status_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     c.normalizer.reset()
     c.bus.publish(Events.STATUS_CONFIG_CHANGED)
     return c.normalizer.get_config()
 
 
 @config.get("/app")
-async def app_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def app_config(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     s = c.settings
     return {"app_name": s.app_name, "version": s.app_version, "environment": s.environment,
             "default_period_days": s.default_period_days, "max_upload_mb": s.max_upload_mb,

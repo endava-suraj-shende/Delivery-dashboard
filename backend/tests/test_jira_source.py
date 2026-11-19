@@ -222,7 +222,12 @@ def test_employee_flow_metrics_and_weekly_timeline(jira_mode):
     assert alice["avg_cycle_days"] is not None and alice["team_avg_cycle_days"] is not None
     tk = {t["ticket_id"]: t for t in client.get("/api/v1/jira/tickets", params={"preset": "all"}).json()["items"]}
     assert tk["A-1"]["cycle_days"] == 28  # created 10-01 -> Done 10-29
-    wk = ov["charts"]["weekly_by_employee"]
+    # weekly timeline is computed on demand (not part of the overview payload any more)
+    from datetime import date as _d
+    from app.services.filter_service import Filters as _F
+    f = _F(start_date=_d(2026, 10, 5), end_date=_d(2026, 11, 30))
+    a, r, _ = c.analytics.scope(f)
+    wk = c.analytics.weekly_by_employee(a, c.analytics.ticket_table(a, r), f)
     assert wk["weeks"] and wk["weeks"][0] <= "2026-10-05"
     row = next(e for e in wk["employees"] if e["employee"] == "Alice A")
     assert len(row["weeks"]) == len(wk["weeks"]) and row["total_completed"] == alice["completed"]
