@@ -1,0 +1,273 @@
+import axios, { AxiosError } from 'axios'
+import type {
+  Activity,
+  CompareData,
+  DataQuality,
+  DataStatus,
+  Dimensions,
+  EmployeeRow,
+  EmployeeSummary,
+  EmployeesList,
+  EmployeesPerformance,
+  IndividualPerformance,
+  ExecutiveData,
+  FileInfo,
+  Overview,
+  Paged,
+  Period,
+  ProjectRow,
+  ProjectSummary,
+  Release,
+  ReportInfo,
+  SearchResult,
+  SprintDetail,
+  SprintList,
+  StatusConfig,
+  TeamData,
+  Ticket,
+} from '@/types'
+
+export const api = axios.create({ baseURL: '/api/v1', timeout: 120_000 })
+
+export interface ApiError {
+  error: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+export function errorMessage(err: unknown): string {
+  const e = err as AxiosError<ApiError>
+  if (e?.response?.data?.message) return e.response.data.message
+  if (e?.message) return e.message
+  return 'Unexpected error'
+}
+
+export function isNoData(err: unknown): boolean {
+  const e = err as AxiosError<ApiError>
+  return e?.response?.status === 409
+}
+
+const q = (qs: string, extra?: Record<string, string | number | boolean | undefined>) => {
+  const p = new URLSearchParams(qs)
+  Object.entries(extra ?? {}).forEach(([k, v]) => v !== undefined && p.set(k, String(v)))
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
+export const excelApi = {
+  status: () => api.get<DataStatus>('/excel/status').then((r) => r.data),
+  refresh: () => api.post<DataStatus>('/excel/refresh').then((r) => r.data),
+  files: () => api.get<{ items: FileInfo[]; status: DataStatus }>('/excel/files').then((r) => r.data),
+  fileDetail: (id: string) => api.get<FileDetail>(`/excel/files/${id}`).then((r) => r.data),
+  sheets: (id: string) => api.get<{ sheets: string[] }>(`/excel/sheets?file_id=${id}`).then((r) => r.data),
+  preview: (id: string, sheet?: string, limit = 40) =>
+    api.get<Preview>(`/excel/preview${q('', { file_id: id, sheet_name: sheet, limit })}`).then((r) => r.data),
+  validate: (body: { file_id: string; sheet_name?: string; column_overrides?: Record<string, Record<string, string>> }) =>
+    api.post<Validation>('/excel/validate', body).then((r) => r.data),
+  upload: (file: File, replace = false) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post<{ file_id: string; file_name: string; issues: unknown[]; status: DataStatus; jira: Record<string, unknown> | null }>(`/excel/upload?replace=${replace}`, fd).then((r) => r.data)
+  },
+  removeUpload: (id: string) => api.delete<DataStatus>(`/excel/uploads/${id}`).then((r) => r.data),
+  clearUploads: () => api.delete<DataStatus>('/excel/uploads').then((r) => r.data),
+  history: () => api.get<{ items: HistoryEntry[] }>('/excel/history').then((r) => r.data.items),
+}
+
+export const dataSourceApi = {
+  get: () => api.get<DataStatus>('/data/source').then((r) => r.data),
+  update: (body: { mode?: 'auto' | 'excel' | 'jira' | 'both'; lookback_days?: number; refresh_minutes?: number }) =>
+    api.put<DataStatus>('/data/source', body).then((r) => r.data),
+  reload: () => api.post<DataStatus>('/data/reload').then((r) => r.data),
+}
+
+export interface HistoryEntry {
+  id: string
+  timestamp: string
+  reason: string
+  source?: string
+  jira_issues?: number
+  files: number
+  parsed: number
+  failed: number
+  duration_ms: number
+  activities: number
+  releases: number
+  failures: { file: string; error: string }[]
+}
+
+export interface Preview {
+  file_id: string
+  file_name: string
+  sheets: string[]
+  sheet: string
+  total_rows: number
+  total_columns: number
+  rows: (string | number | null)[][]
+}
+
+export interface Mapping {
+  header_row: number
+  headers: (string | null)[]
+  fields: Record<string, { column_index: number; header: string | null }>
+  unmapped_headers: string[]
+}
+
+export interface Validation {
+  file_id: string
+  file_name: string
+  sheet_name: string | null
+  layout: string
+  valid: boolean
+  errors: Record<string, unknown>[]
+  warnings: Record<string, unknown>[]
+  work_items: number
+  releases: number
+  work_mapping: Mapping | null
+  release_mapping: Mapping | null
+  canonical_fields: { work_items: string[]; releases: string[] }
+  metadata: { employee: string | null; project: string | null; report_date: string | null }
+}
+
+export interface FileDetail {
+  file: FileInfo
+  metadata: Record<string, unknown> & { notes: string[] }
+  work_mapping: Mapping | null
+  release_mapping: Mapping | null
+  issues: Record<string, unknown>[]
+  work_items: Record<string, unknown>[]
+  releases: Record<string, unknown>[]
+  kt_items: Record<string, unknown>[]
+}
+
+export const dashboardApi = {
+  executive: (qs: string) => api.get<ExecutiveData>(`/dashboard/executive${q(qs)}`).then((r) => r.data),
+  team: (qs: string) => api.get<TeamData>(`/dashboard/team${q(qs)}`).then((r) => r.data),
+  activities: (qs: string, page = 1, pageSize = 100) =>
+    api.get<Paged<Activity>>(`/dashboard/activities${q(qs, { page, page_size: pageSize })}`).then((r) => r.data),
+  compare: (qs: string, a: [string, string], b: [string, string]) =>
+    api.get<CompareData>(`/dashboard/compare${q(qs, { a_start: a[0], a_end: a[1], b_start: b[0], b_end: b[1] })}`).then((r) => r.data),
+  quality: (qs: string, scope: 'period' | 'all' = 'period') => api.get<DataQuality>(`/dashboard/data-quality${q(qs, { scope })}`).then((r) => r.data),
+}
+
+export const employeeApi = {
+  list: (qs: string) => api.get<EmployeesList>(`/employees${q(qs)}`).then((r) => r.data),
+  performanceSummary: (qs: string) => api.get<EmployeesPerformance>(`/employees/performance${q(qs)}`).then((r) => r.data),
+  summary: (name: string, qs: string) => api.get<EmployeeSummary>(`/employees/${encodeURIComponent(name)}/summary${q(qs)}`).then((r) => r.data),
+  activities: (name: string, qs: string) =>
+    api.get<Paged<Activity>>(`/employees/${encodeURIComponent(name)}/activities${q(qs, { page_size: 1000 })}`).then((r) => r.data),
+  performance: (name: string, qs: string) => api.get<Performance>(`/employees/${encodeURIComponent(name)}/performance${q(qs)}`).then((r) => r.data),
+}
+
+export interface Performance {
+  employee: string
+  current: { period: Period; kpis: Overview['kpis']; trend: Overview['charts']['trend'] }
+  previous: { period: Period; kpis: Overview['kpis']; trend: Overview['charts']['trend'] }
+  performance: IndividualPerformance
+  tickets: Ticket[]
+  releases: Release[]
+}
+
+export const projectApi = {
+  list: (qs: string) => api.get<{ period: Period; items: ProjectRow[]; all: string[] }>(`/projects${q(qs)}`).then((r) => r.data),
+  summary: (name: string, qs: string) => api.get<ProjectSummary>(`/projects/${encodeURIComponent(name)}/summary${q(qs)}`).then((r) => r.data),
+}
+
+export const sprintApi = {
+  list: (qs: string) => api.get<SprintList>(`/sprints${q(qs)}`).then((r) => r.data),
+  detail: (name: string, qs: string) => api.get<SprintDetail>(`/sprints/${encodeURIComponent(name)}${q(qs)}`).then((r) => r.data),
+}
+
+export const jiraApi = {
+  summary: (qs: string) => api.get<Overview>(`/jira/summary${q(qs)}`).then((r) => r.data),
+  tickets: (qs: string) => api.get<{ total: number; items: Ticket[] }>(`/jira/tickets${q(qs)}`).then((r) => r.data),
+  ticket: (id: string) => api.get<{ ticket: Ticket; activities: Activity[]; releases: Release[] }>(`/jira/tickets/${encodeURIComponent(id)}`).then((r) => r.data),
+}
+
+export interface DevSummary {
+  period: Period
+  kpis: Overview['kpis']
+  distribution: Overview['charts']['dev_deployment']
+  by_employee: Overview['charts']['dev_by_employee']
+  by_project: Overview['charts']['dev_by_project']
+  by_application: Overview['charts']['dev_by_application']
+  trend: Overview['charts']['trend']
+  items: Activity[]
+}
+
+export interface ProdSummary {
+  period: Period
+  kpis: Overview['kpis']
+  distribution: Overview['charts']['prod_deployment']
+  prod_required: Overview['charts']['prod_required']
+  by_employee: Overview['charts']['prod_by_employee']
+  by_project: Overview['charts']['prod_by_project']
+  by_application: Overview['charts']['prod_by_application']
+  trend: Overview['charts']['release_trend']
+  items: Release[]
+}
+
+export const deploymentApi = {
+  dev: (qs: string) => api.get<DevSummary>(`/deployment/dev/summary${q(qs)}`).then((r) => r.data),
+  prod: (qs: string) => api.get<ProdSummary>(`/deployment/production/summary${q(qs)}`).then((r) => r.data),
+}
+
+export const metaApi = {
+  dimensions: () => api.get<Dimensions>('/meta/dimensions').then((r) => r.data),
+  search: (query: string) => api.get<SearchResult>(`/search?q=${encodeURIComponent(query)}`).then((r) => r.data),
+  appConfig: () => api.get<AppConfig>('/config/app').then((r) => r.data),
+}
+
+export interface AppConfig {
+  app_name: string
+  version: string
+  environment: string
+  default_period_days: number
+  max_upload_mb: number
+  allowed_extensions: string[]
+  data_dir_name: string
+  authentication: string
+  database: string
+  jira_configured: boolean
+  jira_email: string | null
+  jira_boards: number
+  jira_auto_sync: boolean
+}
+
+export const configApi = {
+  get: () => api.get<StatusConfig>('/config/status').then((r) => r.data),
+  update: (body: Partial<Pick<StatusConfig, 'mappings' | 'latest_status_rule' | 'count_blank_status_as'>>) =>
+    api.put<StatusConfig>('/config/status', body).then((r) => r.data),
+  addMapping: (dimension: string, category: string, value: string) =>
+    api.post<StatusConfig>('/config/status/mapping', { dimension, category, value }).then((r) => r.data),
+  reset: () => api.post<StatusConfig>('/config/status/reset').then((r) => r.data),
+}
+
+export interface ReportRequest {
+  report_type: string
+  format: 'pdf' | 'xlsx' | 'csv'
+  target?: string | null
+  filters: Record<string, unknown>
+}
+
+export const reportApi = {
+  types: () => api.get<{ items: { key: string; label: string; requires_target: boolean }[]; formats: string[] }>('/reports/types').then((r) => r.data),
+  generate: (body: ReportRequest) => api.post<ReportInfo>('/reports/generate', body).then((r) => r.data),
+  list: () => api.get<{ items: ReportInfo[] }>('/reports').then((r) => r.data.items),
+  downloadUrl: (id: string) => `/api/v1/reports/download/${id}`,
+}
+
+export function filtersBodyFromQuery(qs: string): Record<string, unknown> {
+  const p = new URLSearchParams(qs)
+  const body: Record<string, unknown> = {}
+  const s = p.get('start_date')
+  const e = p.get('end_date')
+  if (s) body.start_date = s
+  if (e) body.end_date = e
+  for (const key of ['employee', 'project', 'application', 'jira_board', 'sprint', 'status', 'work_type', 'dev_deployment', 'prod_deployment']) {
+    const vals = p.getAll(key)
+    if (vals.length) body[key] = vals
+  }
+  if (p.get('search')) body.search = p.get('search')
+  return body
+}

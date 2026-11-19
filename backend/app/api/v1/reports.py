@@ -1,0 +1,64 @@
+"""Report Center endpoints."""
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
+
+from app.api.deps import loaded_container
+from app.schemas.common import ReportRequest
+from app.services.container import Container
+from app.services.filter_service import Filters
+from app.services.report_service import REPORT_TYPES
+
+router = APIRouter(prefix="/reports", tags=["Reports"])
+
+MEDIA = {"pdf": "application/pdf", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         "csv": "text/csv"}
+
+
+def _filters(body: ReportRequest) -> Filters:
+    return Filters.from_query(**body.filters.model_dump())
+
+
+@router.get("/types")
+async def types() -> Dict[str, Any]:
+    return {"items": [{"key": k, "label": v, "requires_target": k in ("employee", "project", "application", "jira_board")}
+                      for k, v in REPORT_TYPES.items()], "formats": list(MEDIA)}
+
+
+@router.post("/generate")
+async def generate(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.reports.generate(body.report_type, body.format, _filters(body), body.target)
+
+
+@router.post("/employee")
+async def employee_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.reports.generate("employee" if body.target else "all_employees", body.format, _filters(body), body.target)
+
+
+@router.post("/team")
+async def team_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.reports.generate("team", body.format, _filters(body), None)
+
+
+@router.post("/project")
+async def project_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.reports.generate("project", body.format, _filters(body), body.target)
+
+
+@router.post("/management")
+async def management_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.reports.generate("management", body.format, _filters(body), None)
+
+
+@router.get("")
+async def list_reports(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return {"items": c.reports.list()}
+
+
+@router.get("/download/{report_id}")
+async def download(report_id: str, c: Container = Depends(loaded_container)) -> FileResponse:
+    info = c.reports.get(report_id)
+    return FileResponse(info["path"], media_type=MEDIA[info["format"]], filename=info["file_name"])

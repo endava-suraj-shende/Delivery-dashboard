@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/node_modules/.tmp/
+
+# Runtime
+storage/uploads/*
+storage/reports/*
+!storage/uploads/.gitkeep
+!storage/reports/.gitkeep
+backend/config/status_mapping.json
+backend/config/jira_boards.json
+backend/config/jira_user_map.json
+backend/config/data_source.json
+backend/config/jira_credentials.json
+backend/config/.secret.key
+.env
+*.log
+.run.lock
+
+# Source workbooks are business data — do not commit
+Data/
+
+# Excel lock files
+~$*.xlsx
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
