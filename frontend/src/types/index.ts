@@ -1,4 +1,4 @@
-export interface CategoryPoint {
+﻿export interface CategoryPoint {
   key: string
   label: string
   color: string
@@ -300,7 +300,7 @@ export interface Charts {
   activities_by_application: NamedValue[]
   trend: TrendPoint[]
   release_trend: ReleaseTrendPoint[]
-  weekly_by_employee: WeeklyByEmployee
+  weekly_by_employee?: WeeklyByEmployee
 }
 
 export interface WeeklyCell {

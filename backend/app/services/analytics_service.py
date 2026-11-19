@@ -1,15 +1,17 @@
-"""Centralized reporting & aggregation engine.
+﻿"""Centralized reporting & aggregation engine.
 
 Every dashboard, table and report in the application derives its numbers from
 this module so that counts always reconcile. Two distinct measures are used:
 
-* **activities** – one Excel work-item row = one activity record.
-* **unique tickets** – a Jira id counted once regardless of how many rows,
+* **activities** â€“ one Excel work-item row = one activity record.
+* **unique tickets** â€“ a Jira id counted once regardless of how many rows,
   reports or employees reference it. A ticket's representative status is chosen
   by the configurable *latest status rule* (see ``StatusNormalizer``).
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import OrderedDict
 from datetime import date
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -140,6 +142,16 @@ class AnalyticsEngine:
     def invalidate(self) -> None:
         self._cache.clear()
 
+    def _first_seen_all(self) -> Optional[pd.Series]:
+        """ticket id -> first report date across all loaded data (cached per data version)."""
+        def build() -> Optional[pd.Series]:
+            all_a = self.store.activities()
+            if not len(all_a):
+                return None
+            ex = all_a.loc[all_a["has_ticket"], ["ticket_ids", "report_date"]].explode("ticket_ids")
+            return ex.groupby("ticket_ids")["report_date"].min()
+        return self._cached("first_seen_all", build)
+
     # ------------------------------------------------------------------ scoping
     def resolve_filters(self, f: Filters) -> Filters:
         return f.with_defaults(self.default_days)
@@ -169,7 +181,7 @@ class AnalyticsEngine:
                 "report_dates": dates, "report_count": int(len(reps))}
 
     # ------------------------------------------------------------------ tickets
-    def ticket_table(self, a: pd.DataFrame, r: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def ticket_table(self, a: pd.DataFrame, r: Optional[pd.DataFrame] = None, *, with_history: bool = False) -> pd.DataFrame:
         """One row per unique Jira ticket with its representative (latest) status."""
         if a.empty:
             return pd.DataFrame(columns=["ticket_id"])
@@ -183,23 +195,25 @@ class AnalyticsEngine:
             ex = ex.sort_values(["tid", "_rank", "report_date", "source_row"])
         else:
             ex = ex.sort_values(["tid", "report_date", "_rank", "source_row"])
-        last = ex.groupby("tid").tail(1).set_index("tid")
-        grp = ex.groupby("tid")
+        last = ex.groupby("tid", sort=False).tail(1).set_index("tid")
+        grp = ex.groupby("tid", sort=False)
         first_seen = grp["report_date"].min()
         last_seen = grp["report_date"].max()
         completed_mask = ex["work_status"].isin(["completed", "deployed"])
         completed_date = ex[completed_mask].groupby("tid")["report_date"].min()
         blocked_date = ex[ex["work_status"] == "blocked"].groupby("tid")["report_date"].min()
 
-        def uniq(series: pd.Series) -> List[str]:
-            return sorted({str(x) for x in series.dropna() if str(x).strip()})
+        def uniq_lists(col: str) -> pd.Series:
+            # sorted unique non-empty values per ticket, vectorised (no per-group Python lambda)
+            s = ex[["tid", col]].dropna()
+            s = s[s[col].astype(str).str.strip() != ""]
+            s = s.astype({col: str}).drop_duplicates().sort_values(["tid", col])
+            return s.groupby("tid", sort=False)[col].agg(list).reindex(last.index).apply(lambda v: v if isinstance(v, list) else [])
 
-        history: Dict[str, List[Dict[str, Any]]] = {}
-        for tid, d, s_, sr, e in zip(ex["tid"], ex["report_date"], ex["work_status"], ex["work_status_raw"], ex["employee"]):
-            history.setdefault(tid, []).append({"date": _s(d), "status": s_, "status_raw": sr, "employee": e})
-
+        status_changed = grp["work_status"].nunique().reindex(last.index).values > 1
+        idx = last.index
         tickets = pd.DataFrame({
-            "ticket_id": last.index,
+            "ticket_id": idx,
             "work_status": last["work_status"].values,
             "work_status_raw": last["work_status_raw"].values,
             "work_type": last["work_type"].values,
@@ -218,32 +232,34 @@ class AnalyticsEngine:
             "due_date": (last["due_date"].values if "due_date" in last.columns else [pd.NaT] * len(last)),
             "due_source": (last["due_source"].values if "due_source" in last.columns else [None] * len(last)),
             "resolved_date": (last["resolved_date"].values if "resolved_date" in last.columns else [pd.NaT] * len(last)),
-            "employees": grp["employee"].agg(uniq).reindex(last.index).values,
-            "projects": grp["project"].agg(uniq).reindex(last.index).values,
-            "applications": grp["application"].agg(uniq).reindex(last.index).values,
-            "jira_boards": grp["jira_board"].agg(uniq).reindex(last.index).values,
-            "activity_count": grp.size().reindex(last.index).values,
-            "report_count": grp["file_id"].nunique().reindex(last.index).values,
-            "first_seen": first_seen.reindex(last.index).values,
-            "last_seen": last_seen.reindex(last.index).values,
-            "completed_on": completed_date.reindex(last.index).values,
-            "blocked_since": blocked_date.reindex(last.index).values,
-            "status_history": [history.get(t, []) for t in last.index],
+            "employees": uniq_lists("employee").values,
+            "projects": uniq_lists("project").values,
+            "applications": uniq_lists("application").values,
+            "jira_boards": uniq_lists("jira_board").values,
+            "activity_count": grp.size().reindex(idx).values,
+            "report_count": grp["file_id"].nunique().reindex(idx).values,
+            "first_seen": first_seen.reindex(idx).values,
+            "last_seen": last_seen.reindex(idx).values,
+            "completed_on": completed_date.reindex(idx).values,
+            "blocked_since": blocked_date.reindex(idx).values,
         }).reset_index(drop=True)
-        tickets["employee"] = tickets["employees"].map(lambda xs: ", ".join(xs))
-        tickets["project"] = tickets["projects"].map(lambda xs: ", ".join(xs))
-        tickets["application"] = tickets["applications"].map(lambda xs: ", ".join(xs))
-        tickets["jira_board"] = tickets["jira_boards"].map(lambda xs: ", ".join(xs))
-        tickets["is_remaining"] = tickets["work_status"].isin(REMAINING_CATEGORIES)
-        tickets["status_changed"] = tickets["status_history"].map(lambda h: len({x["status"] for x in h}) > 1)
-        # first appearance across ALL data (not just the filtered period) -> carried-in vs new, cycle time
-        all_a = self.store.activities()
-        if len(all_a):
-            all_ex = all_a[all_a["has_ticket"]].explode("ticket_ids")
-            first_all = all_ex.groupby("ticket_ids")["report_date"].min()
-            tickets["first_seen_all"] = tickets["ticket_id"].map(first_all)
+        # status history is only needed by the ticket views; build it lazily when asked for
+        if with_history:
+            history: Dict[str, List[Dict[str, Any]]] = {}
+            for tid, d, s_, sr, e in zip(ex["tid"], ex["report_date"], ex["work_status"], ex["work_status_raw"], ex["employee"]):
+                history.setdefault(tid, []).append({"date": _s(d), "status": s_, "status_raw": sr, "employee": e})
+            tickets["status_history"] = [history.get(t, []) for t in idx]
         else:
-            tickets["first_seen_all"] = tickets["first_seen"]
+            tickets["status_history"] = [[] for _ in range(len(tickets))]
+        tickets["employee"] = tickets["employees"].map(", ".join)
+        tickets["project"] = tickets["projects"].map(", ".join)
+        tickets["application"] = tickets["applications"].map(", ".join)
+        tickets["jira_board"] = tickets["jira_boards"].map(", ".join)
+        tickets["is_remaining"] = tickets["work_status"].isin(REMAINING_CATEGORIES)
+        tickets["status_changed"] = status_changed
+        # first appearance across ALL data (not just the filtered period) -> carried-in vs new, cycle time
+        first_all = self._first_seen_all()
+        tickets["first_seen_all"] = tickets["ticket_id"].map(first_all) if first_all is not None else tickets["first_seen"]
         tickets["first_seen_all"] = pd.to_datetime(tickets["first_seen_all"], errors="coerce").fillna(pd.to_datetime(tickets["first_seen"], errors="coerce"))
         done_on = pd.to_datetime(tickets["completed_on"], errors="coerce")
         tickets["cycle_days"] = ((done_on - tickets["first_seen_all"]).dt.days).where(done_on.notna())
@@ -605,7 +621,8 @@ class AnalyticsEngine:
 
     # ------------------------------------------------------------------ insights
     def insights(self, a: pd.DataFrame, r: pd.DataFrame, tickets: pd.DataFrame, k: Dict[str, Any],
-                 prev: Optional[Dict[str, Any]], f: Filters) -> List[Dict[str, Any]]:
+                 prev: Optional[Dict[str, Any]], f: Filters, emp: Optional[List[Dict[str, Any]]] = None,
+                 proj: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
 
         def add(kind: str, title: str, detail: str, value: Any = None, link: Optional[Dict[str, str]] = None) -> None:
@@ -614,8 +631,8 @@ class AnalyticsEngine:
         if a.empty:
             add("info", "No activity in the selected period", "No bi-weekly reports fall inside the selected date range.")
             return out
-        emp = self.employee_table(a, r, tickets)
-        proj = self.project_table(a, r)
+        emp = emp if emp is not None else self.employee_table(a, r, tickets)
+        proj = proj if proj is not None else self.project_table(a, r)
         if emp:
             top_c = max(emp, key=lambda e: e["completed"])
             if top_c["completed"]:
@@ -665,13 +682,13 @@ class AnalyticsEngine:
                 int(app_dev.iloc[0]), {"type": "application", "value": str(app_dev.index[0])})
         inactive = sorted(set(self.store.reports()["employee"].dropna()) - set(a["employee"].dropna()))
         if inactive:
-            add("warning", "No reports in period", f"{len(inactive)} employee(s) have no report in the selected period: {', '.join(inactive[:6])}{'…' if len(inactive) > 6 else ''}.",
+            add("warning", "No reports in period", f"{len(inactive)} employee(s) have no report in the selected period: {', '.join(inactive[:6])}{'â€¦' if len(inactive) > 6 else ''}.",
                 len(inactive))
         if prev:
             delta = k["completed_tickets"] - prev["completed_tickets"]
             if prev["completed_tickets"] or k["completed_tickets"]:
                 add("success" if delta >= 0 else "warning", "Completed vs previous period",
-                    f"Completed tickets {'increased' if delta > 0 else 'decreased' if delta < 0 else 'are unchanged'} by {abs(delta)} compared with the previous {f.days} days ({prev['completed_tickets']} → {k['completed_tickets']}).",
+                    f"Completed tickets {'increased' if delta > 0 else 'decreased' if delta < 0 else 'are unchanged'} by {abs(delta)} compared with the previous {f.days} days ({prev['completed_tickets']} â†’ {k['completed_tickets']}).",
                     delta)
             bdelta = k["blocked_tickets"] - prev["blocked_tickets"]
             if bdelta > 0:
@@ -683,6 +700,9 @@ class AnalyticsEngine:
 
     # ------------------------------------------------------------------ data quality
     def data_quality(self, f: Optional[Filters] = None) -> Dict[str, Any]:
+        return self._cached(f"quality:{f.cache_key() if f else 'all'}", lambda: self._data_quality(f))
+
+    def _data_quality(self, f: Optional[Filters] = None) -> Dict[str, Any]:
         issues = self.store.issues()
         reps = self.store.reports()
         a = self.store.activities()
@@ -728,6 +748,8 @@ class AnalyticsEngine:
                 pf = f.previous_period()
                 pa, pr, preps = self.scope(pf)
                 prev_k = self.kpis(pa, pr, self.ticket_table(pa, pr), preps, roster)
+            employees = self.employee_table(a, r, tickets, f.start_date if not f.is_all else None)
+            projects = self.project_table(a, r)
             return {
                 "period": self.period_info(f, reps),
                 "filters": f.to_dict(),
@@ -757,11 +779,10 @@ class AnalyticsEngine:
                     "activities_by_application": self.simple_counts(a, "application", top=15),
                     "trend": self.trend(a, tickets, r),
                     "release_trend": self.release_trend(r),
-                    "weekly_by_employee": self.weekly_by_employee(a, tickets, f),
                 },
-                "insights": self.insights(a, r, tickets, k, prev_k, f),
-                "employees": self.employee_table(a, r, tickets, f.start_date if not f.is_all else None),
-                "projects": self.project_table(a, r),
+                "insights": self.insights(a, r, tickets, k, prev_k, f, employees, projects),
+                "employees": employees,
+                "projects": projects,
                 "calculation_rules": self.rules(),
                 "latest_status_rule": self.normalizer.config.latest_status_rule,
                 "source": self.source_mode(),
@@ -798,6 +819,9 @@ class AnalyticsEngine:
 
     def tickets_view(self, f: Filters) -> Dict[str, Any]:
         f = self.resolve_filters(f)
+        return self._cached(f"tickets:{f.cache_key()}", lambda: self._tickets_view(f))
+
+    def _tickets_view(self, f: Filters) -> Dict[str, Any]:
         a, r, _ = self.scope(f)
         t = self.ticket_table(a, r)
         if len(t):
@@ -817,7 +841,7 @@ class AnalyticsEngine:
         rows = a[mask]
         if rows.empty:
             return None
-        t = self.ticket_table(rows, self.store.releases())
+        t = self.ticket_table(rows, self.store.releases(), with_history=True)
         rel = self.store.releases()
         rel_rows = rel[rel["ticket_ids"].map(lambda ids: tid in (ids or []))] if len(rel) else rel
         return {
@@ -864,11 +888,16 @@ class AnalyticsEngine:
     # ------------------------------------------------------------------ sprints
     def sprint_table(self, f: Filters, catalogue: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """One row per sprint with its KPIs. The global date range is ignored (a sprint *is* a period);
-        the other filters (employee / project / board / status …) still apply."""
+        the other filters (employee / project / board / status â€¦) still apply."""
+        base = Filters(**{**f.__dict__, "sprint": [], "start_date": None, "end_date": None})
+        cat_key = hashlib.md5(json.dumps(catalogue, sort_keys=True, default=str).encode()).hexdigest()[:12]
+        return self._cached(f"sprints:{base.cache_key()}:{cat_key}", lambda: self._sprint_table(base, catalogue))
+
+    def _sprint_table(self, base: Filters, catalogue: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        f = base
         a_all = self.store.activities()
         if a_all.empty or "sprint" not in a_all.columns:
             return []
-        base = Filters(**{**f.__dict__, "sprint": [], "start_date": None, "end_date": None})
         a = apply_activity_filters(a_all, base, ignore_date=True)
         r = apply_release_filters(self.store.releases(), base, ignore_date=True)
         wanted_boards = {b.lower() for b in f.jira_board}
@@ -877,10 +906,13 @@ class AnalyticsEngine:
         for name in a["sprint"].dropna().unique():
             by_name.setdefault(str(name), {"name": str(name), "state": None})
         out: List[Dict[str, Any]] = []
+        a_groups = {str(k): g for k, g in a.groupby(a["sprint"].astype("string"), dropna=True)} if len(a) else {}
+        r_groups = {str(k): g for k, g in r.groupby(r["sprint"].astype("string"), dropna=True)} if len(r) and "sprint" in r.columns else {}
+        empty_a, empty_r = a.iloc[0:0], r.iloc[0:0]
         for name, meta in by_name.items():
-            sa = a[a["sprint"].astype("string") == name]
-            sr = r[r["sprint"].astype("string") == name] if len(r) and "sprint" in r.columns else r.iloc[0:0]
-            tickets = self.ticket_table(sa, sr)
+            sa = a_groups.get(name, empty_a)
+            sr = r_groups.get(name, empty_r)
+            tickets = self.ticket_table(sa, sr) if len(sa) else pd.DataFrame(columns=["ticket_id"])
             ts = self.counts(tickets["work_status"], WORK_STATUS_CATS) if len(tickets) else {c: 0 for c in WORK_STATUS_CATS}
             completed = ts["completed"] + ts["deployed"]
             total = int(len(tickets))

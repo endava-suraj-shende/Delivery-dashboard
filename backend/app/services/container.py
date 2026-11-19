@@ -1,4 +1,4 @@
-"""Composition root: builds and wires singleton services."""
+﻿"""Composition root: builds and wires singleton services."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -39,6 +39,7 @@ class Container:
         self.data = DataSourceService(settings, self.store, self.excel, self.jira_source, self.jira_boards,
                                       self.jira_pool, bus)
         self.analytics.source_mode = lambda: self.data.mode
+        self.jira.source_mode = lambda: self.data.mode
         self.analytics.board_members = self.data.board_members
         from app.events.event_handlers import register_handlers
         register_handlers(self)
