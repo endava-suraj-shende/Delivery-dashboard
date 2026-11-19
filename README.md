@@ -135,11 +135,13 @@ with per-sprint KPIs, people, tickets and releases, plus deltas against the prev
 filter applies it to every tab; a sprint is a period of its own, so the date range is not applied while a sprint
 filter is active. Endpoints: `GET /sprints`, `GET /sprints/{name}`, filter parameter `sprint`.
 
-**Employee performance.** *Employee Performance* shows, per person, unique tickets by latest status — assigned,
-completed, in development, code review, testing / QA, ready to deploy, backlog, on hold, blocked — plus dev / production
-deployments, as charts (assigned vs completed, work status by employee, deployments, completion trend) and a table.
-The individual page adds a current-vs-previous-period ticket-status chart, a ticket summary table and a day-by-day
-performance trend (chart + table). On-time / overdue counts use the Jira due date, or the end of the sprint the work
+**Employee performance.** *Employee Performance* compares people fairly whatever their workload: a table with the
+numbers printed on inline bars — **Assigned** (workload), **Carried over / New** (where the work came from),
+**Completed x of y · %** (delivery, coloured against the team average), **Avg days to complete** (speed, with the team
+average as a tick), plus in progress / blocked / overdue / deployments — and a **week-by-week timeline** (one column per
+week, each cell = tickets started → completed) that makes mid-period surges and quiet weeks visible. The individual page
+repeats these for one person (workload vs delivery bars, weekly chart + grid, current-vs-previous ticket status and a
+day-by-day trend). Alternative *Ticket status* and *Work detail* table views remain available. On-time / overdue counts use the Jira due date, or the end of the sprint the work
 belongs to when no due date is set. Endpoint: `GET /employees/{name}/performance` (`performance.metrics`).
 
 ---

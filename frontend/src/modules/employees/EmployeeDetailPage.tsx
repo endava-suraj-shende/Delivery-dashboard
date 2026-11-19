@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertOctagon, CheckCircle2, FileOutput, Hourglass, Rocket, ServerCog, Ticket, FlaskConical, Code2, SearchCheck } from 'lucide-react'
@@ -17,6 +17,8 @@ import { useDimensions } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { employeeApi } from '@/services/api'
 import { cn, fmtDate, fmtNum } from '@/lib/utils'
+import { WeeklyTimeline } from '@/components/common/WeeklyTimeline'
+import { BarCell } from '@/modules/employees/EmployeesPage'
 import { FEATURES } from '@/lib/features'
 
 export default function EmployeeDetailPage() {
@@ -92,11 +94,44 @@ export default function EmployeeDetailPage() {
             const statusRows = p.metrics.filter((m) => (statusKeys as readonly string[]).includes(m.key)).map((m) => ({ name: m.label, current: Number(m.current ?? 0), previous: Number(m.previous ?? 0) }))
             const trend = perf.data.current.trend
             const fmtVal = (v: number | null) => (v === null || v === undefined ? '–' : fmtNum(v, 0))
+            const weekly = d.charts.weekly_by_employee
+            const mine = weekly.employees.find((e) => e.employee.toLowerCase() === name.toLowerCase())
+            const weeklyRows = mine ? mine.weeks.map((w) => ({ name: fmtDate(w.week, { day: '2-digit', month: 'short' }), started: w.new, completed: w.completed, worked: w.worked })) : []
             return (
               <div className="grid gap-4 lg:grid-cols-3">
-                <ChartCard title="Ticket status — current vs previous period" description={`Unique tickets by latest status. ${perf.data.current.period.label} vs ${perf.data.previous.period.label}.`} className="lg:col-span-2" height={300}>
-                  <GroupedBarChart data={statusRows} series={[{ key: 'current', label: 'Current period', color: 'blue' }, { key: 'previous', label: 'Previous period', color: 'grey' }]} height={300} />
-                </ChartCard>
+                <Card className="lg:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Workload vs delivery</CardTitle>
+                    <CardDescription>
+                      {cur
+                        ? `${cur.unique_tickets} tickets worked on (${cur.carried_in} carried over from before the period, ${cur.new_in_period} new) · ${cur.completed} completed (${fmtNum(cur.completed_pct ?? 0, 0)}%)${cur.avg_cycle_days !== null ? ` · average ${fmtNum(cur.avg_cycle_days, 1)} days to complete${cur.team_avg_cycle_days !== null ? ` (team ${fmtNum(cur.team_avg_cycle_days, 1)})` : ''}` : ''}${cur.overdue ? ` · ${cur.overdue} overdue` : ''}.`
+                        : 'No activity in the period.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {cur && (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <p className="mb-1 text-[11px] text-muted-foreground">Assigned → completed</p>
+                          <BarCell value={cur.completed} max={cur.unique_tickets} label={`${cur.completed} of ${cur.unique_tickets}`} pct={cur.completed_pct} />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[11px] text-muted-foreground">Carried over → completed</p>
+                          <BarCell value={cur.completed_carried} max={cur.carried_in} label={`${cur.completed_carried} of ${cur.carried_in}`} pct={cur.carried_in ? (100 * cur.completed_carried) / cur.carried_in : null} color="bg-slate-500" />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[11px] text-muted-foreground">New this period → completed</p>
+                          <BarCell value={cur.completed_new} max={cur.new_in_period} label={`${cur.completed_new} of ${cur.new_in_period}`} pct={cur.new_in_period ? (100 * cur.completed_new) / cur.new_in_period : null} color="bg-blue-500" />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <p className="mb-1 text-[11px] text-muted-foreground">Week by week — tickets started vs completed (shows when work arrived and when it got done)</p>
+                      <GroupedBarChart data={weeklyRows} series={[{ key: 'started', label: 'Started', color: 'blue' }, { key: 'completed', label: 'Completed', color: 'green' }, { key: 'worked', label: 'Worked on', color: 'grey' }]} height={220} />
+                    </div>
+                    {mine && <WeeklyTimeline data={{ weeks: weekly.weeks, employees: [mine] }} compact />}
+                  </CardContent>
+                </Card>
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Ticket summary</CardTitle>
@@ -113,6 +148,22 @@ export default function EmployeeDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
+                        {cur && (
+                          <>
+                            <tr className="border-b bg-muted/30" title="Average days from first appearance to completion (completed tickets only)">
+                              <td className="px-3 py-1.5">Avg days to complete</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{cur.avg_cycle_days === null ? '–' : fmtNum(cur.avg_cycle_days, 1)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{p.previous?.avg_cycle_days === null || p.previous?.avg_cycle_days === undefined ? '–' : fmtNum(p.previous.avg_cycle_days, 1)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{cur.team_avg_cycle_days !== null ? `team ${fmtNum(cur.team_avg_cycle_days, 1)}` : '–'}</td>
+                            </tr>
+                            <tr className="border-b bg-muted/30" title="Tickets first worked on before the period vs inside it">
+                              <td className="px-3 py-1.5">Carried over / new</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{cur.carried_in} / {cur.new_in_period}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{p.previous ? `${p.previous.carried_in} / ${p.previous.new_in_period}` : '–'}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">–</td>
+                            </tr>
+                          </>
+                        )}
                         {p.metrics.map((m) => (
                           <tr key={m.key} className={cn('border-b last:border-0', ['unique_tickets', 'completed', 'in_progress'].includes(m.key) && 'font-medium')} title={m.hint}>
                             <td className="px-3 py-1.5">{m.label}</td>
@@ -125,6 +176,9 @@ export default function EmployeeDetailPage() {
                     </table>
                   </CardContent>
                 </Card>
+                <ChartCard title="Ticket status — current vs previous period" description={`${perf.data.current.period.label} vs ${perf.data.previous.period.label}.`} className="lg:col-span-3" height={260}>
+                  <GroupedBarChart data={statusRows} series={[{ key: 'current', label: 'Current period', color: 'blue' }, { key: 'previous', label: 'Previous period', color: 'grey' }]} height={260} />
+                </ChartCard>
                 <Card className="lg:col-span-3">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Performance trend</CardTitle>

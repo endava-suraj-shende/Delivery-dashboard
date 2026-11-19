@@ -207,3 +207,23 @@ def test_delivery_performance_rating(jira_mode):
     # list endpoint carries the rating too
     lst = client.get("/api/v1/employees", params={"preset": "all"}).json()
     assert lst["team"]["score"] == team["score"] and all("rating" in e for e in lst["items"])
+
+
+def test_employee_flow_metrics_and_weekly_timeline(jira_mode):
+    """Carried-in vs new tickets, cycle time and the per-week assigned/completed series behind the employee table."""
+    client, c = jira_mode
+    client.post("/api/v1/jira/connections/boards", json={"url": "https://fake.atlassian.net/jira/software/c/projects/A/boards/921"})
+    client.post("/api/v1/data/reload")
+    # period starting after A-1's first activity (created 10-01) -> A-1 is carried in for Alice, others are new
+    ov = client.get("/api/v1/dashboard/executive", params={"start_date": "2026-10-05", "end_date": "2026-11-30"}).json()
+    alice = next(e for e in ov["employees"] if e["employee"] == "Alice A")
+    assert alice["carried_in"] >= 1 and alice["carried_in"] + alice["new_in_period"] == alice["unique_tickets"]
+    assert alice["completed_pct"] == round(100.0 * alice["completed"] / alice["unique_tickets"], 1)
+    assert alice["avg_cycle_days"] is not None and alice["team_avg_cycle_days"] is not None
+    tk = {t["ticket_id"]: t for t in client.get("/api/v1/jira/tickets", params={"preset": "all"}).json()["items"]}
+    assert tk["A-1"]["cycle_days"] == 28  # created 10-01 -> Done 10-29
+    wk = ov["charts"]["weekly_by_employee"]
+    assert wk["weeks"] and wk["weeks"][0] <= "2026-10-05"
+    row = next(e for e in wk["employees"] if e["employee"] == "Alice A")
+    assert len(row["weeks"]) == len(wk["weeks"]) and row["total_completed"] == alice["completed"]
+    assert any(c["new"] > 0 for c in row["weeks"]) and sum(c["completed"] for c in row["weeks"]) == alice["completed"]

@@ -150,6 +150,14 @@ export interface EmployeeRow {
   on_time: number
   late: number
   overdue: number
+  carried_in: number
+  new_in_period: number
+  completed_carried: number
+  completed_new: number
+  completed_pct: number | null
+  avg_cycle_days: number | null
+  median_cycle_days: number | null
+  team_avg_cycle_days: number | null
   score: number | null
   rating: RatingKey
   rating_label: string
@@ -292,6 +300,22 @@ export interface Charts {
   activities_by_application: NamedValue[]
   trend: TrendPoint[]
   release_trend: ReleaseTrendPoint[]
+  weekly_by_employee: WeeklyByEmployee
+}
+
+export interface WeeklyCell {
+  week: string
+  worked: number
+  activities: number
+  new: number
+  brand_new: number
+  completed: number
+  blocked: number
+}
+
+export interface WeeklyByEmployee {
+  weeks: string[]
+  employees: { employee: string; weeks: WeeklyCell[]; total_new: number; total_completed: number }[]
 }
 
 export interface Overview {

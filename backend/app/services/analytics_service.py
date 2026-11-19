@@ -236,6 +236,17 @@ class AnalyticsEngine:
         tickets["jira_board"] = tickets["jira_boards"].map(lambda xs: ", ".join(xs))
         tickets["is_remaining"] = tickets["work_status"].isin(REMAINING_CATEGORIES)
         tickets["status_changed"] = tickets["status_history"].map(lambda h: len({x["status"] for x in h}) > 1)
+        # first appearance across ALL data (not just the filtered period) -> carried-in vs new, cycle time
+        all_a = self.store.activities()
+        if len(all_a):
+            all_ex = all_a[all_a["has_ticket"]].explode("ticket_ids")
+            first_all = all_ex.groupby("ticket_ids")["report_date"].min()
+            tickets["first_seen_all"] = tickets["ticket_id"].map(first_all)
+        else:
+            tickets["first_seen_all"] = tickets["first_seen"]
+        tickets["first_seen_all"] = pd.to_datetime(tickets["first_seen_all"], errors="coerce").fillna(pd.to_datetime(tickets["first_seen"], errors="coerce"))
+        done_on = pd.to_datetime(tickets["completed_on"], errors="coerce")
+        tickets["cycle_days"] = ((done_on - tickets["first_seen_all"]).dt.days).where(done_on.notna())
         # on-time delivery: completed on/before the due date (Jira due date, else sprint end)
         due = pd.to_datetime(tickets["due_date"], errors="coerce")
         done = pd.to_datetime(tickets["resolved_date"], errors="coerce").fillna(pd.to_datetime(tickets["completed_on"], errors="coerce"))
@@ -444,9 +455,13 @@ class AnalyticsEngine:
                 for d, row in piv.sort_index().iterrows()]
 
     # ------------------------------------------------------------------ tables
-    def employee_table(self, a: pd.DataFrame, r: pd.DataFrame, tickets: pd.DataFrame) -> List[Dict[str, Any]]:
+    def employee_table(self, a: pd.DataFrame, r: pd.DataFrame, tickets: pd.DataFrame,
+                       period_start: Optional[date] = None) -> List[Dict[str, Any]]:
         if a.empty:
             return []
+        start_ts = pd.Timestamp(period_start) if period_start else None
+        team_cycle = pd.to_numeric(tickets["cycle_days"], errors="coerce").dropna() if len(tickets) else pd.Series(dtype=float)
+        team_avg_cycle = round(float(team_cycle.mean()), 1) if len(team_cycle) else None
         rows: List[Dict[str, Any]] = []
         rel_by_emp = r.groupby("employee") if len(r) else None
         for emp, grp in a.groupby("employee", dropna=False):
@@ -484,11 +499,70 @@ class AnalyticsEngine:
                 "on_time": int(emp_tickets["on_time"].sum()) if len(emp_tickets) else 0,
                 "late": int(emp_tickets["late"].sum()) if len(emp_tickets) else 0,
                 "overdue": int(emp_tickets["overdue"].sum()) if len(emp_tickets) else 0,
+                **self._flow_metrics(emp_tickets, start_ts, team_avg_cycle),
             })
         for row in rows:
             row.update(score_metrics(row))
         rows.sort(key=lambda x: (-x["completed"], -x["total_activities"], x["employee"] or ""))
         return rows
+
+    @staticmethod
+    def _flow_metrics(t: pd.DataFrame, start_ts: Optional[pd.Timestamp], team_avg_cycle: Optional[float]) -> Dict[str, Any]:
+        """Carried-in vs new tickets, completion share and cycle time for one person's tickets."""
+        if not len(t):
+            return {"carried_in": 0, "new_in_period": 0, "completed_pct": None, "avg_cycle_days": None, "median_cycle_days": None,
+                    "team_avg_cycle_days": team_avg_cycle, "completed_new": 0, "completed_carried": 0}
+        first = pd.to_datetime(t["first_seen_all"], errors="coerce")
+        carried_mask = (first < start_ts) if start_ts is not None else pd.Series(False, index=t.index)
+        done = t["work_status"].isin(["completed", "deployed"])
+        cycle = pd.to_numeric(t["cycle_days"], errors="coerce").dropna()
+        return {
+            "carried_in": int(carried_mask.sum()), "new_in_period": int((~carried_mask).sum()),
+            "completed_carried": int((done & carried_mask).sum()), "completed_new": int((done & ~carried_mask).sum()),
+            "completed_pct": round(100.0 * int(done.sum()) / len(t), 1),
+            "avg_cycle_days": round(float(cycle.mean()), 1) if len(cycle) else None,
+            "median_cycle_days": round(float(cycle.median()), 1) if len(cycle) else None,
+            "team_avg_cycle_days": team_avg_cycle,
+        }
+
+    def weekly_by_employee(self, a: pd.DataFrame, tickets: pd.DataFrame, f: Filters) -> Dict[str, Any]:
+        """Per employee, per week: tickets newly assigned (first seen), completed, and worked on.
+
+        Weeks are Monday-based and span the filter period (or the data range when unbounded)."""
+        if a.empty or not len(tickets):
+            return {"weeks": [], "employees": []}
+        ex = a[a["has_ticket"]].explode("ticket_ids").rename(columns={"ticket_ids": "tid"})
+        ex = ex[ex["tid"].notna()]
+        tmeta = tickets.set_index("ticket_id")
+        start = pd.Timestamp(f.start_date) if f.start_date and not f.is_all else ex["report_date"].min()
+        end = pd.Timestamp(f.end_date) if f.end_date and not f.is_all else ex["report_date"].max()
+        start = (start - pd.Timedelta(days=start.weekday())).normalize()
+        weeks = pd.date_range(start, end.normalize(), freq="7D")
+        if not len(weeks):
+            return {"weeks": [], "employees": []}
+        wk = lambda s: (pd.to_datetime(s) - pd.to_timedelta(pd.to_datetime(s).dt.weekday, unit="D")).dt.normalize()  # noqa: E731
+        ex = ex.assign(week=wk(ex["report_date"]))
+        first_all = tmeta["first_seen_all"] if "first_seen_all" in tmeta else tmeta["first_seen"]
+        done_on = pd.to_datetime(tmeta["completed_on"], errors="coerce")
+        out = []
+        for emp, grp in ex.groupby("employee", dropna=False):
+            tids = grp["tid"].unique()
+            fa = wk(pd.Series(pd.to_datetime(first_all.reindex(tids), errors="coerce").values, index=tids))
+            do = wk(pd.Series(done_on.reindex(tids).values, index=tids))
+            # the week a ticket was first worked on by this person (what "assigned" looks like from their side)
+            first_touch = wk(grp.groupby("tid")["report_date"].min())
+            cells = []
+            for w in weeks:
+                worked = grp[grp["week"] == w]
+                cells.append({
+                    "week": _s(w), "worked": int(worked["tid"].nunique()), "activities": int(len(worked)),
+                    "new": int(((first_touch == w)).sum()), "brand_new": int((fa == w).sum()),
+                    "completed": int((do == w).sum()),
+                    "blocked": int(worked.loc[worked["work_status"] == "blocked", "tid"].nunique()),
+                })
+            out.append({"employee": emp, "weeks": cells, "total_new": sum(c["new"] for c in cells), "total_completed": sum(c["completed"] for c in cells)})
+        out.sort(key=lambda e: (-e["total_new"], e["employee"] or ""))
+        return {"weeks": [_s(w) for w in weeks], "employees": out}
 
     def project_table(self, a: pd.DataFrame, r: pd.DataFrame) -> List[Dict[str, Any]]:
         if a.empty:
@@ -683,9 +757,10 @@ class AnalyticsEngine:
                     "activities_by_application": self.simple_counts(a, "application", top=15),
                     "trend": self.trend(a, tickets, r),
                     "release_trend": self.release_trend(r),
+                    "weekly_by_employee": self.weekly_by_employee(a, tickets, f),
                 },
                 "insights": self.insights(a, r, tickets, k, prev_k, f),
-                "employees": self.employee_table(a, r, tickets),
+                "employees": self.employee_table(a, r, tickets, f.start_date if not f.is_all else None),
                 "projects": self.project_table(a, r),
                 "calculation_rules": self.rules(),
                 "latest_status_rule": self.normalizer.config.latest_status_rule,
@@ -731,7 +806,7 @@ class AnalyticsEngine:
                 "dev_deployment_raw", "prod_required", "prod_required_raw", "prod_deployment", "prod_deployment_raw",
                 "has_release", "release_date", "work_details", "ticket_link", "employee", "employees", "project",
                 "application", "jira_board", "sprint", "due_date", "due_source", "due_tracked", "on_time", "late", "overdue",
-                "activity_count", "report_count", "first_seen", "last_seen",
+                "activity_count", "report_count", "first_seen", "first_seen_all", "cycle_days", "last_seen",
                 "completed_on", "blocked_since", "latest_report_date", "status_changed", "is_remaining"]
         return {"total": int(len(t)), "filters": f.to_dict(), "items": records(t, cols)}
 

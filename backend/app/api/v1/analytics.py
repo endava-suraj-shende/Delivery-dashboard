@@ -93,6 +93,12 @@ async def employee_performance(name: str, f: Filters = Depends(filters), c: Cont
     prev = c.analytics.overview(c.analytics.resolve_filters(ff).previous_period(), include_prev=False)
     cur_row = next((e for e in cur["employees"] if e["employee"] == name), None)
     prev_row = next((e for e in prev["employees"] if e["employee"] == name), None)
+    # team reference values come from the unfiltered-by-employee scope
+    team_rows = c.analytics.overview(_with(f, employee=[]), include_prev=False)["employees"]
+    team_cycle = next((e.get("team_avg_cycle_days") for e in team_rows if e.get("team_avg_cycle_days") is not None), None)
+    for row in (cur_row, prev_row):
+        if row is not None:
+            row["team_avg_cycle_days"] = team_cycle
     return {"employee": name, "current": {"period": cur["period"], "kpis": cur["kpis"], "trend": cur["charts"]["trend"]},
             "previous": {"period": prev["period"], "kpis": prev["kpis"], "trend": prev["charts"]["trend"]},
             "performance": {"current": cur_row, "previous": prev_row, "metrics": metric_rows(cur_row or {}, prev_row),
