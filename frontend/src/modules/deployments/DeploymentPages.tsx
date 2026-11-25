@@ -33,7 +33,7 @@ export function DevDeploymentPage() {
       {d && dd && (
         <>
           <KpiGrid cols={6}>
-            <KpiCard label="Deployment activities" value={d.kpis.dev_deployment_activities} icon={<ServerCog className="h-4 w-4" />} tone="teal" compact hint="Activity rows where Dev Deployment is not 'Not Applicable' / unknown." />
+            <KpiCard label="Deployment work items" value={d.kpis.dev_deployment_activities} icon={<ServerCog className="h-4 w-4" />} tone="teal" compact hint="Work rows where Dev Deployment is not 'Not Applicable' / unknown." />
             <KpiCard label="Successfully deployed" value={dd.deployed} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" compact onClick={() => toggleValue('dev_deployment', 'deployed')} active={filters.dev_deployment.includes('deployed')} />
             <KpiCard label="In progress" value={dd.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact onClick={() => toggleValue('dev_deployment', 'in_progress')} />
             <KpiCard label="Pending" value={dd.pending} icon={<Hourglass className="h-4 w-4" />} tone="orange" compact onClick={() => toggleValue('dev_deployment', 'pending')} active={filters.dev_deployment.includes('pending')} />
@@ -109,7 +109,7 @@ export function ProductionPage() {
       {d && pd && (
         <>
           <KpiGrid cols={6}>
-            <KpiCard label="Release activities" value={d.kpis.production_releases} icon={<Rocket className="h-4 w-4" />} tone="purple" compact hint="Rows in Production Deployment Summary tables dated inside the period." />
+            <KpiCard label="Release records" value={d.kpis.production_releases} icon={<Rocket className="h-4 w-4" />} tone="purple" compact hint="Rows in Production Deployment Summary tables dated inside the period." />
             <KpiCard label="Release tickets" value={d.kpis.production_release_tickets} icon={<Ticket className="h-4 w-4" />} tone="blue" compact hint="Distinct Jira ids referenced by release rows." />
             <KpiCard label="Successfully released" value={pd.released} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" compact onClick={() => toggleValue('prod_deployment', 'released')} active={filters.prod_deployment.includes('released')} />
             <KpiCard label="Release in progress" value={pd.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact onClick={() => toggleValue('prod_deployment', 'in_progress')} />
@@ -120,7 +120,7 @@ export function ProductionPage() {
             <KpiCard label="Not required" value={pd.not_required} icon={<MinusCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('prod_deployment', 'not_required')} />
             <KpiCard label="Unknown / unmapped" value={pd.other} icon={<HelpCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('prod_deployment', 'other')} />
             <KpiCard label="Success rate" value={d.kpis.production_success_rate} suffix="%" tone="green" compact />
-            <KpiCard label="Work items needing prod" value={d.kpis.prod_required_yes} tone="blue" compact hint="Activity rows with 'Production Deployment Required? = Yes'" />
+            <KpiCard label="Work items needing prod" value={d.kpis.prod_required_yes} tone="blue" compact hint="Work rows with 'Production Deployment Required? = Yes'" />
           </KpiGrid>
           <div className="grid gap-4 lg:grid-cols-3">
             <ChartCard title="Production deployment status">
@@ -134,7 +134,7 @@ export function ProductionPage() {
             </ChartCard>
           </div>
           <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-            <ChartCard title="Production release activities by project">
+            <ChartCard title="Production releases by project">
               <StackedBarChart data={d.by_project} series={PROD_SERIES} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} />
             </ChartCard>
             <ChartCard title="Production releases by employee">

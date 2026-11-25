@@ -13,13 +13,13 @@ import { useToast } from '@/components/ui/toast'
 import { configApi, errorMessage } from '@/services/api'
 
 const DIMENSIONS: { key: string; label: string; desc: string }[] = [
-  { key: 'work_status', label: 'Work / Jira status', desc: 'Values from the "Work Status" column. Drives Completed / In Progress / Blocked … ticket counts.' },
+  { key: 'work_status', label: 'Work / Jira status', desc: 'Values from the "Work Status" column. Drives Completed / In Progress / Blocked ... ticket counts.' },
   { key: 'work_type', label: 'Work type', desc: 'Values from "Work Type". Drives Development / Analysis / Testing activity counts.' },
   { key: 'dev_deployment', label: 'Dev deployment status', desc: 'Values from "Dev Deployment Status".' },
   { key: 'prod_deployment', label: 'Production deployment status', desc: 'Values from the Production Deployment Summary table.' },
   { key: 'prod_required', label: 'Production required / In Production', desc: 'Values from "Production Deployment Required?".' },
-  { key: 'jira_dev_deployment', label: 'Jira status → Dev deployment', desc: 'Used when Jira is the data source: which workflow statuses mean the work has reached a dev/test environment.' },
-  { key: 'jira_prod_deployment', label: 'Jira status → Production', desc: 'Used when Jira is the data source and the issue has no fixVersion: which statuses mean released / pending in production.' },
+  { key: 'jira_dev_deployment', label: 'Jira status to Dev deployment', desc: 'Used when Jira is the data source: which workflow statuses mean the work has reached a dev/test environment.' },
+  { key: 'jira_prod_deployment', label: 'Jira status to Production', desc: 'Used when Jira is the data source and the issue has no fixVersion: which statuses mean released / pending in production.' },
 ]
 
 export default function StatusConfigPage() {
@@ -82,7 +82,7 @@ export default function StatusConfigPage() {
             <Card className={unmappedTotal ? 'border-orange-300' : ''}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><AlertTriangle className={`h-4 w-4 ${unmappedTotal ? 'text-orange-500' : 'text-green-600'}`} /> Unmapped values in current data ({unmappedTotal})</CardTitle>
-                <CardDescription>Values seen in the workbooks that are not mapped. They currently count as "Other / Unmapped" — never as completed, pending or successful. Choose a category to map each one.</CardDescription>
+                <CardDescription>Values seen in the workbooks that are not mapped. They currently count as "Other / Unmapped" - never as completed, pending or successful. Choose a category to map each one.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {unmappedTotal === 0 && <p className="text-sm text-muted-foreground">All values in the loaded workbooks are mapped.</p>}
@@ -91,9 +91,9 @@ export default function StatusConfigPage() {
                     <div key={`${dim}:${value}`} className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
                       <Badge variant="outline">{DIMENSIONS.find((d) => d.key === dim)?.label ?? dim}</Badge>
                       <span className="font-mono">"{value}"</span>
-                      <span className="text-xs text-muted-foreground">×{count}</span>
+                      <span className="text-xs text-muted-foreground">x{count}</span>
                       <NativeSelect className="ml-auto h-8 w-auto text-xs" defaultValue="" onChange={(e) => e.target.value && add.mutate({ d: dim, c: e.target.value, v: value })}>
-                        <option value="">Map to…</option>
+                        <option value="">Map to</option>
                         {Object.entries(cfg.categories[dim]).filter(([k]) => k !== 'other').map(([k, m]) => (
                           <option key={k} value={k}>{m.label}</option>
                         ))}
@@ -116,7 +116,7 @@ export default function StatusConfigPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>{d.label}</CardTitle>
-                    <CardDescription>{d.desc} Matching is case-insensitive and ignores punctuation; a value also matches if it contains a mapped phrase (e.g. "Completed - QA" → Completed).</CardDescription>
+                    <CardDescription>{d.desc} Matching is case-insensitive and ignores punctuation; a value also matches if it contains a mapped phrase (e.g. "Completed - QA" to Completed).</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {Object.entries(cfg.categories[d.key])
@@ -152,7 +152,7 @@ export default function StatusConfigPage() {
                                 }
                               }}
                             >
-                              <Input value={newValue[inputKey] ?? ''} onChange={(e) => setNewValue((s) => ({ ...s, [inputKey]: e.target.value }))} placeholder="Add Excel value…" className="h-7 text-xs" />
+                              <Input value={newValue[inputKey] ?? ''} onChange={(e) => setNewValue((s) => ({ ...s, [inputKey]: e.target.value }))} placeholder="Add Excel value" className="h-7 text-xs" />
                               <Button type="submit" size="xs" variant="outline"><Plus /></Button>
                             </form>
                           </div>

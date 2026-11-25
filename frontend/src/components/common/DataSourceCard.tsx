@@ -25,7 +25,7 @@ export function DataSourceCard({ compact }: { compact?: boolean }) {
   const [refresh, setRefresh] = useState<number | ''>('')
   const update = useMutation({
     mutationFn: dataSourceApi.update,
-    onSuccess: (st) => { qc.invalidateQueries(); toast({ title: `Data source: ${st.source}`, description: `${st.activity_count} activities · ${st.employee_count} employees`, variant: 'success' }) },
+    onSuccess: (st) => { qc.invalidateQueries(); toast({ title: `Data source: ${st.source}`, description: `${st.activity_count} activities | ${st.employee_count} employees`, variant: 'success' }) },
     onError: (e) => toast({ title: 'Could not change data source', description: errorMessage(e), variant: 'destructive' }),
   })
   const reload = useMutation({ mutationFn: dataSourceApi.reload, onSuccess: (st) => { qc.invalidateQueries(); toast({ title: 'Data reloaded', description: `${st.activity_count} activities from ${st.source}`, variant: 'success' }) }, onError: (e) => toast({ title: 'Reload failed', description: errorMessage(e), variant: 'destructive' }) })
@@ -37,8 +37,8 @@ export function DataSourceCard({ compact }: { compact?: boolean }) {
         <div>
           <CardTitle className="flex items-center gap-2"><Database className="h-4 w-4" /> Primary data source</CardTitle>
           <CardDescription>
-            Active: <b className="uppercase">{s.source}</b>{s.configured_mode === 'auto' && ' (automatic)'} · {s.activity_count} activities · {s.employee_count} employees · {s.project_count} projects
-            {s.jira && ` · ${s.jira.issues} Jira issues from ${s.jira.boards.length} board(s)`}
+            Active: <b className="uppercase">{s.source}</b>{s.configured_mode === 'auto' && ' (automatic)'} | {s.activity_count} activities | {s.employee_count} employees | {s.project_count} projects
+            {s.jira && ` | ${s.jira.issues} Jira issues from ${s.jira.boards.length} board(s)`}
           </CardDescription>
         </div>
         <Button size="sm" variant="outline" onClick={() => reload.mutate()} disabled={busy}><RefreshCw className={cn(reload.isPending && 'animate-spin')} /> Reload</Button>
@@ -79,7 +79,7 @@ export function DataSourceCard({ compact }: { compact?: boolean }) {
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer">Jira field mapping (resolved by name per site)</summary>
             {Object.entries(s.jira.fields_resolved).map(([site, m]) => (
-              <p key={site} className="mt-1"><b>{site}</b>: {Object.entries(m).map(([k, v]) => `${k} → ${v ?? '—'}`).join(' · ')}</p>
+              <p key={site} className="mt-1"><b>{site}</b>: {Object.entries(m).map(([k, v]) => `${k} to ${v ?? '-'}`).join(' | ')}</p>
             ))}
           </details>
         )}

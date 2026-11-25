@@ -22,7 +22,6 @@ const SORTS = [
   { value: 'completed', label: 'Completed tickets' },
   { value: 'blocked', label: 'Blocked tickets' },
   { value: 'in_progress', label: 'In-progress tickets' },
-  { value: 'total_activities', label: 'Total activities' },
   { value: 'unique_tickets', label: 'Unique tickets' },
   { value: 'employee', label: 'Name' },
 ]
@@ -37,7 +36,6 @@ export function projectColumns(): ColumnDef<ProjectRow, unknown>[] {
     { accessorKey: 'project', header: 'Project / Team', cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span> },
     num('employees', 'Employees'),
     ...(FEATURES.applications ? [{ accessorKey: 'applications', header: 'Applications', cell: ({ getValue }) => <span className="text-xs">{(getValue() as string[]).join(', ')}</span> } as ColumnDef<ProjectRow, unknown>] : []),
-    num('total_activities', 'Activities'),
     num('unique_tickets', 'Tickets'),
     num('completed', 'Completed', 'text-green-600 font-medium'),
     num('in_progress', 'In progress', 'text-blue-600'),
@@ -90,15 +88,14 @@ export default function TeamPage() {
           <KpiGrid cols={6}>
             <KpiCard label="Total employees" value={d.kpis.total_employees} icon={<Users className="h-4 w-4" />} tone="grey" compact hint="All employees across loaded workbooks" />
             <KpiCard label="Active in period" value={d.kpis.active_employees} icon={<UserCheck className="h-4 w-4" />} tone="blue" compact previous={d.previous_kpis?.active_employees} />
-            <KpiCard label="Activity records" value={d.kpis.total_activities} icon={<Activity className="h-4 w-4" />} tone="grey" compact previous={d.previous_kpis?.total_activities} />
             <KpiCard label="Unique tickets" value={d.kpis.total_tickets} icon={<Ticket className="h-4 w-4" />} tone="blue" compact previous={d.previous_kpis?.total_tickets} />
             <KpiCard label="Completed" value={d.kpis.completed_tickets} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" compact previous={d.previous_kpis?.completed_tickets} onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />
             <KpiCard label="In progress" value={d.kpis.in_progress_tickets} icon={<Activity className="h-4 w-4" />} tone="blue" compact onClick={() => toggleValue('status', 'in_progress')} active={filters.status.includes('in_progress')} />
             <KpiCard label="Pending" value={d.kpis.pending_tickets} icon={<Hourglass className="h-4 w-4" />} tone="orange" compact onClick={() => setList('status', ['pending', 'on_hold'])} />
             <KpiCard label="Blocked" value={d.kpis.blocked_tickets} icon={<AlertOctagon className="h-4 w-4" />} tone="red" compact onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
-            <KpiCard label="Analysis rows" value={d.kpis.analysis_activities} icon={<SearchCheck className="h-4 w-4" />} tone="orange" compact />
-            <KpiCard label="Development rows" value={d.kpis.development_activities} icon={<Code2 className="h-4 w-4" />} tone="blue" compact />
-            <KpiCard label="Testing rows" value={d.kpis.testing_activities} icon={<FlaskConical className="h-4 w-4" />} tone="purple" compact />
+            <KpiCard label="Analysis" value={d.kpis.analysis_activities} icon={<SearchCheck className="h-4 w-4" />} tone="orange" compact />
+            <KpiCard label="Development" value={d.kpis.development_activities} icon={<Code2 className="h-4 w-4" />} tone="blue" compact />
+            <KpiCard label="Testing" value={d.kpis.testing_activities} icon={<FlaskConical className="h-4 w-4" />} tone="purple" compact />
             <KpiCard label="Dev deployments" value={d.kpis.dev_deployment_activities} sub={`${d.kpis.dev_deployed} deployed`} icon={<ServerCog className="h-4 w-4" />} tone="teal" compact />
             <KpiCard label="Prod releases" value={d.kpis.production_releases} sub={`${d.kpis.production_released} deployed`} icon={<Rocket className="h-4 w-4" />} tone="purple" compact />
             <KpiCard label="Prod pending" value={d.kpis.production_pending} icon={<Hourglass className="h-4 w-4" />} tone="orange" compact />
@@ -120,15 +117,12 @@ export default function TeamPage() {
                 <ChartCard title="Overall team ticket status" description="Unique tickets by latest status.">
                   <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                 </ChartCard>
-                <ChartCard title="Team daily productivity trend" description="Activities and completed tickets per report date." className="lg:col-span-2">
-                  <TrendChart data={d.charts.trend} series={[{ key: 'activities', label: 'Activities', color: '#2563eb' }, { key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'employees', label: 'Reporting employees', color: '#7c3aed', dashed: true }]} />
+                <ChartCard title="Team daily completion trend" description="Completed tickets per report date." className="lg:col-span-2">
+                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'employees', label: 'Reporting employees', color: '#7c3aed', dashed: true }]} />
                 </ChartCard>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
-                <ChartCard title="Employee-wise activity comparison" description="Activity rows per employee.">
-                  <NamedBarChart data={d.charts.activities_by_employee} onSelect={goEmployee} max={30} valueLabel="Activities" />
-                </ChartCard>
-                <ChartCard title="Development vs Analysis vs Testing by employee" description="Activity rows by work type.">
+                                <ChartCard title="Development vs Analysis vs Testing by employee" description="Work rows by work type.">
                   <StackedBarChart data={d.charts.type_by_employee} series={TYPE_SERIES} onSelect={goEmployee} max={30} />
                 </ChartCard>
               </div>
@@ -170,11 +164,11 @@ export default function TeamPage() {
                   <StackedBarChart data={d.charts.status_by_project} series={STATUS_SERIES} onSelect={goProject} />
                 </ChartCard>
                 {FEATURES.applications && (
-                  <ChartCard title="Application-wise work distribution" description="Activity rows per application.">
+                  <ChartCard title="Application-wise work distribution" description="Work rows per application.">
                     <NamedBarChart data={d.charts.activities_by_application} onSelect={(n) => toggleValue('application', n)} color="#0d9488" valueLabel="Activities" />
                   </ChartCard>
                 )}
-                <ChartCard title="Project-wise backlog distribution" description="Tickets not completed (in progress, pending, blocked, analysis…).">
+                <ChartCard title="Project-wise backlog distribution" description="Tickets not completed (in progress, pending, blocked, analysis...).">
                   <StackedBarChart data={d.charts.status_by_project.filter((p) => Number(p.total) - Number(p.completed_total) > 0)} series={STATUS_SERIES.filter((s) => !['completed', 'deployed'].includes(s.key))} onSelect={goProject} />
                 </ChartCard>
               </div>
@@ -184,7 +178,7 @@ export default function TeamPage() {
                   <CardDescription>Click a row to open the project dashboard.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <DataTable data={d.projects} columns={projCols} onRowClick={(r) => goProject(r.project)} exportName="project-performance" dense initialSorting={[{ id: 'total_activities', desc: true }]} />
+                  <DataTable data={d.projects} columns={projCols} onRowClick={(r) => goProject(r.project)} exportName="project-performance" dense initialSorting={[{ id: 'unique_tickets', desc: true }]} />
                 </CardContent>
               </Card>
             </TabsContent>
@@ -210,7 +204,7 @@ export default function TeamPage() {
 
             <TabsContent value="deploy" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-3">
-                <ChartCard title="Dev deployment status" description="Activity rows.">
+                <ChartCard title="Dev deployment status" description="Work rows.">
                   <DonutChart data={d.charts.dev_deployment} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="activities" />
                 </ChartCard>
                 <ChartCard title="Dev deployment by employee" className="lg:col-span-2">

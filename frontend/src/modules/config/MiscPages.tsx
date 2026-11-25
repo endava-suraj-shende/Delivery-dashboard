@@ -19,16 +19,15 @@ import { dashboardApi } from '@/services/api'
 import { fmtNum, toISODate } from '@/lib/utils'
 
 const COMPARE_KEYS: [string, string][] = [
-  ['total_activities', 'Activities'],
   ['total_tickets', 'Unique tickets'],
   ['completed_tickets', 'Completed'],
   ['in_progress_tickets', 'In progress'],
   ['pending_tickets', 'Pending'],
   ['blocked_tickets', 'Blocked'],
   ['analysis_tickets', 'Analysis tickets'],
-  ['development_activities', 'Development rows'],
-  ['analysis_activities', 'Analysis rows'],
-  ['testing_activities', 'Testing rows'],
+  ['development_activities', 'Development'],
+  ['analysis_activities', 'Analysis'],
+  ['testing_activities', 'Testing'],
   ['dev_deployed', 'Dev deployed'],
   ['dev_pending', 'Dev pending'],
   ['production_releases', 'Prod releases'],
@@ -62,7 +61,7 @@ export function ComparePage() {
 
   return (
     <>
-      <PageHeader title="Period Comparison" description="Compare two date ranges side by side. Other global filters (project, employee, …) apply to both periods." breadcrumbs={[{ label: 'Compare' }]} />
+      <PageHeader title="Period Comparison" description="Compare two date ranges side by side. Other global filters (project, employee, ...) apply to both periods." breadcrumbs={[{ label: 'Compare' }]} />
       <GlobalFilterBar compact />
       <Card>
         <CardContent className="flex flex-wrap items-end gap-4 p-4">
@@ -83,32 +82,30 @@ export function ComparePage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
             {COMPARE_KEYS.map(([k, label]) => {
               const d = q.data!.deltas[k]
-              return <KpiCard key={k} label={label} value={d.b} previous={d.a} compact sub={`A: ${fmtNum(d.a, 1)} → B: ${fmtNum(d.b, 1)}`} />
+              return <KpiCard key={k} label={label} value={d.b} previous={d.a} compact sub={`A: ${fmtNum(d.a, 1)} to B: ${fmtNum(d.b, 1)}`} />
             })}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title={`Period A · ${q.data.a.period.label}`} description={`${q.data.a.period.report_count} reports`}>
-              <TrendChart data={q.data.a.trend} series={[{ key: 'activities', label: 'Activities', color: '#2563eb' }, { key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
+            <ChartCard title={`Period A | ${q.data.a.period.label}`} description={`${q.data.a.period.report_count} reports`}>
+              <TrendChart data={q.data.a.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
             </ChartCard>
-            <ChartCard title={`Period B · ${q.data.b.period.label}`} description={`${q.data.b.period.report_count} reports`}>
-              <TrendChart data={q.data.b.trend} series={[{ key: 'activities', label: 'Activities', color: '#2563eb' }, { key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
+            <ChartCard title={`Period B | ${q.data.b.period.label}`} description={`${q.data.b.period.report_count} reports`}>
+              <TrendChart data={q.data.b.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
             </ChartCard>
           </div>
           <Card>
             <CardHeader>
               <CardTitle>Employee comparison</CardTitle>
-              <CardDescription>Completed / blocked unique tickets and activity rows in each period.</CardDescription>
+              <CardDescription>Completed / blocked unique tickets in each period.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/60 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left">Employee</th>
-                    <th className="px-3 py-2 text-right">Activities A</th>
-                    <th className="px-3 py-2 text-right">Activities B</th>
                     <th className="px-3 py-2 text-right">Completed A</th>
                     <th className="px-3 py-2 text-right">Completed B</th>
-                    <th className="px-3 py-2 text-right">Δ Completed</th>
+                    <th className="px-3 py-2 text-right">Change in completed</th>
                     <th className="px-3 py-2 text-right">Blocked A</th>
                     <th className="px-3 py-2 text-right">Blocked B</th>
                   </tr>
@@ -123,13 +120,11 @@ export function ComparePage() {
                       return (
                         <tr key={name} className="border-b">
                           <td className="px-3 py-1.5 font-medium">{name}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{ea?.total_activities ?? '–'}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{eb?.total_activities ?? '–'}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{ea?.completed ?? '–'}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{eb?.completed ?? '–'}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{ea?.completed ?? '-'}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{eb?.completed ?? '-'}</td>
                           <td className={`px-3 py-1.5 text-right tabular-nums font-medium ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{delta > 0 ? '+' : ''}{delta}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{ea?.blocked ?? '–'}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{eb?.blocked ?? '–'}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{ea?.blocked ?? '-'}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{eb?.blocked ?? '-'}</td>
                         </tr>
                       )
                     })}
@@ -184,10 +179,10 @@ export function SettingsPage() {
                 <Row label="Application" value={`${cfg.data.app_name} v${cfg.data.version}`} />
                 <Row label="Environment" value={cfg.data.environment} />
                 <Row label="Default period" value={`Last ${cfg.data.default_period_days} days`} />
-                <Row label="Upload limit" value={`${cfg.data.max_upload_mb} MB · ${cfg.data.allowed_extensions.join(', ')}`} />
+                <Row label="Upload limit" value={`${cfg.data.max_upload_mb} MB | ${cfg.data.allowed_extensions.join(', ')}`} />
                 <Row label="Database" value={<span className="flex items-center gap-1"><Database className="h-3.5 w-3.5" /> {cfg.data.database}</span>} />
                 <Row label="Authentication" value={<span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> {cfg.data.authentication}</span>} />
-                <Row label="Jira integration" value={cfg.data.jira_configured ? <span>{cfg.data.jira_email} · {cfg.data.jira_boards} board(s) · auto-sync {cfg.data.jira_auto_sync ? 'on' : 'off'} · <Link className="text-primary hover:underline" to="/config/jira">manage</Link></span> : <span>not configured · <Link className="text-primary hover:underline" to="/config/jira">set up</Link></span>} />
+                <Row label="Jira integration" value={cfg.data.jira_configured ? <span>{cfg.data.jira_email} | {cfg.data.jira_boards} board(s) | auto-sync {cfg.data.jira_auto_sync ? 'on' : 'off'} | <Link className="text-primary hover:underline" to="/config/jira">manage</Link></span> : <span>not configured | <Link className="text-primary hover:underline" to="/config/jira">set up</Link></span>} />
               </>
             )}
             {status.data && (

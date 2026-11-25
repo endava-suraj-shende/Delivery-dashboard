@@ -1,4 +1,4 @@
-﻿export interface CategoryPoint {
+export interface CategoryPoint {
   key: string
   label: string
   color: string

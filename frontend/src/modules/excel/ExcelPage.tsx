@@ -41,8 +41,8 @@ export default function ExcelPage() {
     onSuccess: (r) => {
       invalidate()
       const j = r.jira as { compared?: number; errors?: number; warnings?: number; not_found?: number; error?: string } | null
-      const jiraText = j ? (j.error ? ` · Jira: ${j.error}` : ` · Jira: ${j.compared} compared, ${j.errors} conflicts, ${j.warnings} warnings, ${j.not_found} not found`) : ''
-      toast({ title: 'Workbook uploaded', description: `${r.file_name} · ${r.issues.length} validation note(s)${jiraText}`, variant: j && (j.errors || 0) > 0 ? 'destructive' : 'success' })
+      const jiraText = j ? (j.error ? ` | Jira: ${j.error}` : ` | Jira: ${j.compared} compared, ${j.errors} conflicts, ${j.warnings} warnings, ${j.not_found} not found`) : ''
+      toast({ title: 'Workbook uploaded', description: `${r.file_name} | ${r.issues.length} validation note(s)${jiraText}`, variant: j && (j.errors || 0) > 0 ? 'destructive' : 'success' })
     },
     onError: (e) => toast({ title: 'Upload rejected', description: errorMessage(e), variant: 'destructive' }),
   })
@@ -138,7 +138,7 @@ export default function ExcelPage() {
         <KpiGrid cols={6}>
           <KpiCard label="Workbooks" value={s.file_count} icon={<FileSpreadsheet className="h-4 w-4" />} tone="green" compact sub={`${s.uploads} uploaded`} />
           <KpiCard label="Reports parsed" value={s.report_count} icon={<CheckCircle2 className="h-4 w-4" />} tone="blue" compact />
-          <KpiCard label="Activity rows" value={s.activity_count} compact />
+          <KpiCard label="Work rows" value={s.activity_count} compact />
           <KpiCard label="Release rows" value={s.release_count} compact />
           <KpiCard label="Employees / projects" value={`${s.employee_count} / ${s.project_count}`} compact />
           <KpiCard label="Data quality issues" value={s.issues_count} icon={<ShieldAlert className="h-4 w-4" />} tone={s.issues_count ? 'orange' : 'green'} compact />
@@ -148,9 +148,9 @@ export default function ExcelPage() {
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-1 p-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><FolderOpen className="h-3.5 w-3.5" /> Source folder: <code className="rounded bg-muted px-1">{s.source_dir}</code></span>
-            <span>Date range: {fmtDate(s.date_min)} – {fmtDate(s.date_max)}</span>
-            <span>Last refresh: {s.last_refresh ? new Date(s.last_refresh).toLocaleString() : '–'} ({s.load_duration_ms} ms)</span>
-            {s.needs_refresh && <Badge variant="warning">Folder changed since last load — refresh recommended</Badge>}
+            <span>Date range: {fmtDate(s.date_min)} - {fmtDate(s.date_max)}</span>
+            <span>Last refresh: {s.last_refresh ? new Date(s.last_refresh).toLocaleString() : '-'} ({s.load_duration_ms} ms)</span>
+            {s.needs_refresh && <Badge variant="warning">Folder changed since last load - refresh recommended</Badge>}
           </CardContent>
         </Card>
       )}
@@ -166,8 +166,8 @@ export default function ExcelPage() {
 
       <Tabs defaultValue={sp.get('tab') ?? 'files'}>
         <TabsList>
-          <TabsTrigger value="files">Workbooks ({files.data?.items.length ?? '…'})</TabsTrigger>
-          <TabsTrigger value="quality">Data quality ({qs?.total_issues ?? '…'})</TabsTrigger>
+          <TabsTrigger value="files">Workbooks ({files.data?.items.length ?? ''})</TabsTrigger>
+          <TabsTrigger value="quality">Data quality ({qs?.total_issues ?? ''})</TabsTrigger>
           <TabsTrigger value="history">Import history</TabsTrigger>
         </TabsList>
         <TabsContent value="files">
@@ -212,7 +212,7 @@ export default function ExcelPage() {
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 {Object.entries(quality.data.unmapped).flatMap(([dim, vals]) => Object.entries(vals).map(([v, n]) => (
-                  <Badge key={`${dim}:${v}`} variant="warning">{dim.replace('_', ' ')}: "{v}" ×{n}</Badge>
+                  <Badge key={`${dim}:${v}`} variant="warning">{dim.replace('_', ' ')}: "{v}" x{n}</Badge>
                 )))}
               </CardContent>
             </Card>
@@ -241,7 +241,7 @@ export default function ExcelPage() {
                       <span className="font-mono text-xs text-muted-foreground">{new Date(h.timestamp).toLocaleString()}</span>
                       <Badge variant="secondary">{h.reason}</Badge>
                       <span>{h.parsed} / {h.files} files parsed</span>
-                      <span>{h.activities} activities · {h.releases} releases</span>
+                      <span>{h.activities} activities | {h.releases} releases</span>
                       <span className="text-xs text-muted-foreground">{h.duration_ms} ms</span>
                       {h.failed > 0 && <Badge variant="danger">{h.failed} failed: {h.failures.map((f) => f.file).join(', ')}</Badge>}
                     </div>
@@ -293,7 +293,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-green-600" /> {file.file_name}</DialogTitle>
           <DialogDescription>
-            {file.employee} · {file.project} · report date {fmtDate(file.report_date)} ({file.report_date_source}) · {fileSize(file.size_bytes)}
+            {file.employee} | {file.project} | report date {fmtDate(file.report_date)} ({file.report_date_source}) | {fileSize(file.size_bytes)}
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="validation">
@@ -332,7 +332,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
               {v && (
                 <Badge variant={v.valid ? 'success' : 'danger'} className="gap-1">
                   {v.valid ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                  {v.valid ? 'Valid' : 'Problems found'} · layout: {v.layout} · {v.work_items} work items · {v.releases} releases
+                  {v.valid ? 'Valid' : 'Problems found'} | layout: {v.layout} | {v.work_items} work items | {v.releases} releases
                 </Badge>
               )}
             </div>
@@ -347,7 +347,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
                       <div key={f} className={cn('flex items-center justify-between gap-2 rounded border p-2 text-xs', required && !mapped && 'border-red-400 bg-red-50 dark:bg-red-950/30')}>
                         <span className="font-medium">{f.replace(/_/g, ' ')}{required && <span className="text-red-500"> *</span>}</span>
                         <NativeSelect className="h-7 w-[55%] text-xs" value={overrides[f] ?? mapped?.header ?? ''} onChange={(e) => setOverrides((o) => ({ ...o, [f]: e.target.value }))}>
-                          <option value="">— not mapped —</option>
+                          <option value="">- not mapped -</option>
                           {(headers ?? []).map((h) => (
                             <option key={h} value={h}>{h}</option>
                           ))}
@@ -402,7 +402,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
                     ))}
                   </tbody>
                 </table>
-                <p className="p-2 text-xs text-muted-foreground">Showing first {preview.data.rows.length} of {preview.data.total_rows} rows · {preview.data.total_columns} columns</p>
+                <p className="p-2 text-xs text-muted-foreground">Showing first {preview.data.rows.length} of {preview.data.total_rows} rows | {preview.data.total_columns} columns</p>
               </div>
             )}
           </TabsContent>

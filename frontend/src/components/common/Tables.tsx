@@ -43,7 +43,7 @@ export function CategoryCell({ dim, value, raw }: { dim: 'work_status' | 'work_t
     <StatusBadge color={meta?.color} title={raw ? `Excel value: ${raw}` : undefined}>
       {raw && differs ? (
         <span>
-          {raw} <span className="opacity-60">→ {label}</span>
+          {raw} <span className="opacity-60">(mapped to {label})</span>
         </span>
       ) : (
         (raw ?? label)
@@ -53,7 +53,7 @@ export function CategoryCell({ dim, value, raw }: { dim: 'work_status' | 'work_t
 }
 
 export function TicketLink({ id, link, onOpen }: { id: string | null; link?: string | null; onOpen?: (id: string) => void }) {
-  if (!id) return <span className="text-xs text-muted-foreground">—</span>
+  if (!id) return <span className="text-xs text-muted-foreground">-</span>
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <button className="font-medium text-primary hover:underline" onClick={(e) => { e.stopPropagation(); onOpen?.(id) }}>
@@ -70,7 +70,7 @@ export function TicketLink({ id, link, onOpen }: { id: string | null; link?: str
 
 export function EmployeeLink({ name }: { name: string | null }) {
   const { queryString } = useFilters()
-  if (!name) return <span className="text-muted-foreground">—</span>
+  if (!name) return <span className="text-muted-foreground">-</span>
   return (
     <Link to={`/employees/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="hover:underline whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
       {name}
@@ -80,7 +80,7 @@ export function EmployeeLink({ name }: { name: string | null }) {
 
 export function ProjectLink({ name }: { name: string | null }) {
   const { queryString } = useFilters()
-  if (!name) return <span className="text-muted-foreground">—</span>
+  if (!name) return <span className="text-muted-foreground">-</span>
   return (
     <Link to={`/projects/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
       {name}
@@ -107,7 +107,7 @@ export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }
       { accessorKey: 'dev_deployment', header: 'Dev Deployment', cell: ({ row }) => <CategoryCell dim="dev_deployment" value={row.original.dev_deployment} raw={row.original.dev_deployment_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'prod_required', header: 'In Production?', cell: ({ row }) => <CategoryCell dim="prod_required" value={row.original.prod_required} raw={row.original.prod_required_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'comments', header: 'Additional notes', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 70)}</span>, size: 260 },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={row.original.file_name}>{truncate(row.original.file_name, 28)} · r{row.original.source_row}</span> },
+      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={row.original.file_name}>{truncate(row.original.file_name, 28)} | r{row.original.source_row}</span> },
     )
     return withFeatures(cols)
   }, [hideEmployee, onTicket])
@@ -119,7 +119,7 @@ export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }
       pageSize={pageSize}
       dense
       exportName="activities"
-      searchPlaceholder="Search activities…"
+      searchPlaceholder="Search work items"
       initialSorting={[{ id: 'report_date', desc: true }]}
       columnFilters={[
         { id: 'work_status', label: 'Status', options: opts('work_status') },
@@ -160,7 +160,7 @@ export function TicketsTable({ items, onTicket, pageSize = 25 }: { items: Ticket
       pageSize={pageSize}
       dense
       exportName="tickets"
-      searchPlaceholder="Search by ticket id, text…"
+      searchPlaceholder="Search by ticket id or text"
       initialSorting={[{ id: 'last_seen', desc: true }]}
       columnFilters={[
         { id: 'work_status', label: 'Status', options: opts('work_status') },
@@ -181,11 +181,11 @@ export function ReleasesTable({ items, onTicket, pageSize = 25 }: { items: Relea
       { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} /> },
       { accessorKey: 'project', header: 'Project', cell: ({ getValue }) => <ProjectLink name={getValue() as string} /> },
       { accessorKey: 'application', header: 'Application' },
-      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '—'}</span>) },
+      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '-'}</span>) },
       { accessorKey: 'release_details', header: 'Release details', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 100)}</span>, size: 320 },
       { accessorKey: 'prod_deployment', header: 'Production status', cell: ({ row }) => <CategoryCell dim="prod_deployment" value={row.original.prod_deployment} raw={row.original.prod_deployment_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'comments', header: 'Comments', cell: ({ getValue }) => truncate(getValue() as string, 60) },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 28)} · r{row.original.source_row}</span> },
+      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 28)} | r{row.original.source_row}</span> },
     ]),
     [onTicket],
   )
@@ -196,7 +196,7 @@ export function ReleasesTable({ items, onTicket, pageSize = 25 }: { items: Relea
       pageSize={pageSize}
       dense
       exportName="production-releases"
-      searchPlaceholder="Search releases…"
+      searchPlaceholder="Search releases"
       initialSorting={[{ id: 'release_date', desc: true }]}
       columnFilters={[{ id: 'prod_deployment', label: 'Status', options: Object.values(lookup.prod_deployment).map((c) => ({ value: c.key, label: c.label })) }]}
       emptyTitle="No production release records in the selected period"
@@ -248,7 +248,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                 {(q.data.ticket.status_history ?? []).map((h, i) => (
                   <li key={i} className="mb-2">
                     <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                    <span className="text-xs text-muted-foreground">{fmtDate(h.date)}</span> · <CategoryCell dim="work_status" value={h.status} raw={h.status_raw} /> <span className="text-xs text-muted-foreground">by {h.employee}</span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(h.date)}</span> | <CategoryCell dim="work_status" value={h.status} raw={h.status_raw} /> <span className="text-xs text-muted-foreground">by {h.employee}</span>
                   </li>
                 ))}
               </ol>
@@ -265,7 +265,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                       <CategoryCell dim="work_type" value={a.work_type} raw={a.work_type_raw} />
                       <CategoryCell dim="dev_deployment" value={a.dev_deployment} raw={a.dev_deployment_raw} />
                       <span className="ml-auto text-muted-foreground">
-                        {a.file_name} · row {a.source_row}
+                        {a.file_name} | row {a.source_row}
                       </span>
                     </div>
                     <p>{a.work_details}</p>
@@ -286,7 +286,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                         <span>{r.application}</span>
                         <CategoryCell dim="prod_deployment" value={r.prod_deployment} raw={r.prod_deployment_raw} />
                         <span className="ml-auto text-muted-foreground">
-                          {r.file_name} · row {r.source_row}
+                          {r.file_name} | row {r.source_row}
                         </span>
                       </div>
                       <p>{r.release_details}</p>
@@ -307,7 +307,7 @@ function Meta({ label, value }: { label: string; value: string | null | undefine
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="truncate text-sm" title={value ?? undefined}>
-        {value || '—'}
+        {value || '-'}
       </p>
     </div>
   )

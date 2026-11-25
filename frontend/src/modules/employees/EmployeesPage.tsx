@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -9,7 +9,6 @@ import { DataTable } from '@/components/common/DataTable'
 import { ChartCard, DonutChart, GroupedBarChart, StackedBarChart, TrendChart, type StackSeries } from '@/components/charts'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useFilters } from '@/hooks/useFilters'
 import { dashboardApi, employeeApi } from '@/services/api'
@@ -31,19 +30,15 @@ export function employeeColumns(includeProject = true): ColumnDef<EmployeeRow, u
     if (FEATURES.applications) cols.push({ accessorKey: 'application', header: 'Application', cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span> })
   }
   cols.push(
-    num('reports', 'Reports'),
-    num('total_activities', 'Activities'),
     num('unique_tickets', 'Tickets'),
     num('completed', 'Completed', 'text-green-600 font-medium'),
     num('in_progress', 'In progress', 'text-blue-600'),
     num('pending', 'Pending', 'text-orange-600'),
     num('blocked', 'Blocked', 'text-red-600 font-medium'),
-    num('analysis', 'Analysis'),
     num('development', 'Dev'),
     num('testing', 'Test'),
     num('dev_deployed', 'Dev deployed'),
-    num('production_releases', 'Prod releases'),
-    { accessorKey: 'production_status', header: 'Prod status', cell: ({ getValue }) => (getValue() ? <Badge variant="outline">{getValue() as string}</Badge> : <span className="text-muted-foreground">ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â</span>) },
+    num('production_released', 'Prod deployed'),
     { accessorKey: 'last_report_date', header: 'Last report', cell: ({ getValue }) => <span className="whitespace-nowrap text-xs">{fmtDate(getValue() as string)}</span> },
   )
   return cols
@@ -69,7 +64,6 @@ export function statusColumns(): ColumnDef<EmployeeRow, unknown>[] {
     num('blocked', 'Blocked', 'text-red-600 font-medium'),
     num('dev_deployed', 'Dev deployed'),
     num('production_released', 'Prod deployed'),
-    num('total_activities', 'Activities'),
     { accessorKey: 'last_report_date', header: 'Last update', cell: ({ getValue }) => <span className="whitespace-nowrap text-xs">{fmtDate(getValue() as string)}</span> },
   ]
 }
@@ -122,7 +116,7 @@ export default function EmployeesPage() {
             <KpiCard label="People active" value={rows.length} icon={<Users className="h-4 w-4" />} tone="grey" compact sub={d.inactive.length ? `${d.inactive.length} with no activity` : undefined} />
             <KpiCard label="Assigned tickets" value={totals.assigned} icon={<Ticket className="h-4 w-4" />} tone="blue" compact hint="Unique tickets worked on in the period, summed per person (a shared ticket counts for each person)." />
             <KpiCard label="Completed" value={totals.completed} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" compact onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />
-            <KpiCard label="In progress" value={totals.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact sub={`${totals.code_review} review Ã‚Â· ${totals.testing} testing`} />
+            <KpiCard label="In progress" value={totals.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact sub={`${totals.code_review} review | ${totals.testing} testing`} />
             <KpiCard label="Backlog / on hold" value={totals.backlog + totals.on_hold} icon={<Hourglass className="h-4 w-4" />} tone="orange" compact sub={`${totals.on_hold} on hold`} />
             <KpiCard label="Blocked" value={totals.blocked} icon={<AlertOctagon className="h-4 w-4" />} tone="red" compact onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
           </KpiGrid>
@@ -140,14 +134,14 @@ export default function EmployeesPage() {
             <ChartCard title="Work status by employee" description="Completed, in development, code review, testing, ready, backlog, on hold, blocked.">
               <StackedBarChart data={rows.map((r) => ({ name: r.employee, ...Object.fromEntries(EMP_STATUS_SERIES.map((s) => [s.key, Number(r[s.key as keyof EmployeeRow] ?? 0)])) }))} series={EMP_STATUS_SERIES} onSelect={go} max={30} />
             </ChartCard>
-            <ChartCard title="Deployments by employee" description="Dev deployments (activity rows) and production releases deployed.">
+            <ChartCard title="Deployments by employee" description="Dev deployments and production releases deployed.">
               <GroupedBarChart data={rows.map((r) => ({ name: r.employee, dev: r.dev_deployed, prod: r.production_released })).filter((r) => Number(r.dev) + Number(r.prod) > 0)} series={[{ key: 'dev', label: 'Dev deployed', color: 'teal' }, { key: 'prod', label: 'Prod deployed', color: 'purple' }]} />
             </ChartCard>
           </div>
 
           {team.data && (
-            <ChartCard title="Completion trend" description="Completed tickets and activities per day across the selected people.">
-              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'activities', label: 'Activities', color: '#2563eb', dashed: true }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
+            <ChartCard title="Completion trend" description="Completed tickets and open backlog per day across the selected people.">
+              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
             </ChartCard>
           )}
 
@@ -163,7 +157,7 @@ export default function EmployeesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <DataTable key={view} data={rows} columns={view === 'status' ? statusCols : detailCols} onRowClick={(r) => go(r.employee)} exportName="employee-performance" dense initialSorting={[{ id: view === 'status' ? 'unique_tickets' : 'completed', desc: true }]} searchPlaceholder="Search employees…" />
+              <DataTable key={view} data={rows} columns={view === 'status' ? statusCols : detailCols} onRowClick={(r) => go(r.employee)} exportName="employee-performance" dense initialSorting={[{ id: view === 'status' ? 'unique_tickets' : 'completed', desc: true }]} searchPlaceholder="Search employees" />
             </CardContent>
           </Card>
           {d.inactive.length > 0 && (

@@ -51,7 +51,7 @@ export function KpiCard({ label, value, icon, tone = 'default', hint, previous, 
         <div className="min-w-0">
           <p className={cn('truncate font-medium text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>{label}</p>
           <p className={cn('mt-1 font-semibold tracking-tight tabular-nums', compact ? 'text-xl' : 'text-2xl')}>
-            {typeof value === 'number' ? fmtNum(value, 1) : (value ?? '–')}
+            {typeof value === 'number' ? fmtNum(value, 1) : (value ?? '-')}
             {suffix && <span className="ml-0.5 text-sm font-normal text-muted-foreground">{suffix}</span>}
           </p>
           {sub && <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{sub}</p>}

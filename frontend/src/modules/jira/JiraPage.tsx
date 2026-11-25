@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -71,7 +71,7 @@ export default function JiraPage() {
                 if (lookup.trim()) setTicket(lookup.trim().toUpperCase())
               }}
             >
-              <Input value={lookup} onChange={(e) => setLookup(e.target.value)} placeholder="Open ticket id, e.g. OCS-5777" className="h-8 w-56 text-xs" />
+              <Input value={lookup} onChange={(e) => setLookup(e.target.value)} placeholder="Open ticket id, for example OCS-5777" className="h-8 w-56 text-xs" />
               <Button type="submit" size="sm" variant="outline">
                 Open
               </Button>
@@ -100,7 +100,7 @@ export default function JiraPage() {
             <KpiCard label="On hold" value={ts.on_hold} icon={<PauseCircle className="h-4 w-4" />} tone="amber" compact onClick={() => toggleValue('status', 'on_hold')} />
             <KpiCard label="Reopened" value={ts.reopened} tone="pink" compact onClick={() => toggleValue('status', 'reopened')} />
             <KpiCard label="Blocked" value={ts.blocked} icon={<AlertOctagon className="h-4 w-4" />} tone="red" compact onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
-            <KpiCard label="Other / unmapped" value={ts.other} icon={<HelpCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('status', 'other')} hint="Statuses not mapped to a category â€” configure in Status Configuration." />
+            <KpiCard label="Other / unmapped" value={ts.other} icon={<HelpCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('status', 'other')} hint="Statuses not mapped to a category - configure in Status Configuration." />
             <KpiCard label="Changed status in period" value={d.kpis.tickets_changed_status} icon={<History className="h-4 w-4" />} tone="grey" compact hint="Tickets that appear with different statuses across reports." />
             <KpiCard label="Remaining" value={d.kpis.remaining_tickets} tone="orange" compact hint="Tickets whose latest status is not Completed/Deployed/Other." />
           </KpiGrid>
@@ -108,7 +108,7 @@ export default function JiraPage() {
           <Tabs defaultValue={sp.get('tab') ?? 'charts'}>
             <TabsList>
               <TabsTrigger value="charts">Charts</TabsTrigger>
-              <TabsTrigger value="tickets">Ticket details ({tickets.data?.total ?? 'â€¦'})</TabsTrigger>
+              <TabsTrigger value="tickets">Ticket details ({tickets.data?.total ?? '...'})</TabsTrigger>
               <TabsTrigger value="live" className="gap-1">
                 <Plug className="h-3.5 w-3.5" /> Live Jira{liveCount !== null && liveCount > 0 && <span className="ml-1 rounded-full bg-red-500 px-1.5 text-[10px] font-semibold text-white">{liveCount}</span>}
               </TabsTrigger>
@@ -163,7 +163,7 @@ export default function JiraPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Jira ticket details</CardTitle>
-                  <CardDescription>Search by ticket id; click a ticket to view its Excel activity records, notes and status history.</CardDescription>
+                  <CardDescription>Search by ticket id; click a ticket to view its work rows, notes and status history.</CardDescription>
                 </CardHeader>
                 <CardContent>{tickets.data ? <TicketsTable items={tickets.data.items} onTicket={setTicket} pageSize={50} /> : <LoadingState rows={1} />}</CardContent>
               </Card>
@@ -202,7 +202,7 @@ export default function JiraPage() {
                         {recon.data.by_employee.filter((e) => e.error + e.warning + e.info > 0).map((e) => (
                           <Button key={e.employee} variant="outline" size="sm" className="h-auto flex-col items-start py-1.5" onClick={() => nav(`/employees/${encodeURIComponent(e.employee)}${qs}`)}>
                             <span className="font-medium">{e.employee}</span>
-                            <span className="text-[11px] text-muted-foreground">{e.ok} ok Â· <span className="text-red-600">{e.error} conflicts</span> Â· <span className="text-orange-600">{e.warning} warnings</span> Â· {e.info} info</span>
+                            <span className="text-[11px] text-muted-foreground">{e.ok} ok | <span className="text-red-600">{e.error} conflicts</span> | <span className="text-orange-600">{e.warning} warnings</span> | {e.info} info</span>
                           </Button>
                         ))}
                       </CardContent>
@@ -210,8 +210,8 @@ export default function JiraPage() {
                   )}
                   <Card>
                     <CardHeader>
-                      <CardTitle>Excel vs Jira â€” ticket by ticket</CardTitle>
-                      <CardDescription>Excel is the reported view; Jira is live. Checks: {Object.values(recon.data.checks).map((c) => c.description.split(' (')[0]).slice(0, 4).join(' Â· ')} â€¦</CardDescription>
+                      <CardTitle>Excel vs Jira - ticket by ticket</CardTitle>
+                      <CardDescription>Excel is the reported view; Jira is live. Checks: {Object.values(recon.data.checks).map((c) => c.description.split(' (')[0]).slice(0, 4).join(' | ')} ...</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <ReconciliationTable items={recon.data.items} onTicket={setTicket} />

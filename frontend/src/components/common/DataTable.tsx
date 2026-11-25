@@ -38,7 +38,7 @@ export interface DataTableProps<T> {
 export function DataTable<T>({
   data,
   columns,
-  searchPlaceholder = 'Search…',
+  searchPlaceholder = 'Search',
   pageSize = 25,
   onRowClick,
   emptyTitle,
@@ -134,9 +134,9 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <div className={cn('overflow-auto rounded-md border', maxHeight)} style={maxHeight ? undefined : undefined}>
+      <div className={cn('overflow-auto rounded-lg border shadow-sm', maxHeight)}>
         <table className="w-full caption-bottom text-sm">
-          <thead className={cn('bg-muted/60', stickyHeader && 'sticky top-0 z-10')}>
+          <thead className={cn('bg-muted/70 backdrop-blur', stickyHeader && 'sticky top-0 z-10')}>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b">
                 {hg.headers.map((h) => {
@@ -146,7 +146,7 @@ export function DataTable<T>({
                     <th
                       key={h.id}
                       style={{ width: h.getSize() !== 150 ? h.getSize() : undefined }}
-                      className={cn('h-9 px-3 text-left align-middle text-xs font-semibold text-muted-foreground whitespace-nowrap', canSort && 'cursor-pointer select-none hover:text-foreground')}
+                      className={cn('h-10 px-3 align-middle text-[11px] font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap border-b-2 border-border', (h.column.columnDef.meta as { align?: string } | undefined)?.align === 'right' ? 'text-right' : 'text-left', canSort && 'cursor-pointer select-none hover:text-foreground', sorted && 'text-foreground')}
                       onClick={canSort ? h.column.getToggleSortingHandler() : undefined}
                     >
                       <span className="inline-flex items-center gap-1">
@@ -170,11 +170,11 @@ export function DataTable<T>({
               rows.map((row: Row<T>) => (
                 <tr
                   key={row.id}
-                  className={cn('border-b transition-colors hover:bg-muted/40', onRowClick && 'cursor-pointer', rowClassName?.(row.original))}
+                  className={cn('border-b border-border/60 transition-colors odd:bg-background even:bg-muted/20 hover:bg-primary/[0.06]', onRowClick && 'cursor-pointer', rowClassName?.(row.original))}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={cn('px-3 align-top', dense ? 'py-1.5 text-xs' : 'py-2 text-sm')}>
+                    <td key={cell.id} className={cn('px-3 align-middle', dense ? 'py-2 text-xs' : 'py-2.5 text-sm', (cell.column.columnDef.meta as { align?: string } | undefined)?.align === 'right' && 'text-right')}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

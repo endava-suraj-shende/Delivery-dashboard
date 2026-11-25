@@ -27,17 +27,17 @@ export function colorFor(token?: string | null, index = 0): string {
 }
 
 export function fmtNum(v: number | null | undefined, digits = 0): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return '–'
+  if (v === null || v === undefined || Number.isNaN(v)) return '-'
   return v.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })
 }
 
 export function fmtPct(v: number | null | undefined): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return '–'
+  if (v === null || v === undefined || Number.isNaN(v)) return '-'
   return `${v.toFixed(1)}%`
 }
 
 export function fmtDate(v: string | null | undefined, opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }): string {
-  if (!v) return '–'
+  if (!v) return '-'
   const d = new Date(v.length === 10 ? `${v}T00:00:00` : v)
   if (Number.isNaN(d.getTime())) return v
   return d.toLocaleDateString(undefined, opts)
@@ -56,7 +56,7 @@ export function toISODate(d: Date): string {
 
 export function truncate(s: string | null | undefined, n = 80): string {
   if (!s) return ''
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s
+  return s.length > n ? `${s.slice(0, n - 1)}...` : s
 }
 
 export function fileSize(bytes: number): string {

@@ -172,7 +172,7 @@ export function ScoreBarChart({ data, onSelect, height, max = 30, domain = [0, 1
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
         <XAxis type="number" tick={axisTick} domain={domain} />
         <YAxis type="category" dataKey="name" tick={axisTick} width={140} tickFormatter={(v: string) => truncate(v, 22)} />
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'hsl(var(--muted))' }} formatter={(v, _n, item) => [`${Number(v ?? 0)}${(item as { payload?: ScorePoint }).payload?.label ? ` · ${(item as { payload?: ScorePoint }).payload?.label}` : ''}`, valueLabel]} />
+        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'hsl(var(--muted))' }} formatter={(v, _n, item) => [`${Number(v ?? 0)}${(item as { payload?: ScorePoint }).payload?.label ? ` | ${(item as { payload?: ScorePoint }).payload?.label}` : ''}`, valueLabel]} />
         {thresholds.map((t) => (
           <ReferenceLine key={t.label} x={t.value} stroke={colorFor(t.color)} strokeDasharray="4 4" label={{ value: t.label, position: 'insideTopRight', fontSize: 10, fill: colorFor(t.color) }} />
         ))}

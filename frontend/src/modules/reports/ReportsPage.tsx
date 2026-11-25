@@ -18,7 +18,7 @@ import { FEATURES } from '@/lib/features'
 
 const FORMATS = [
   { key: 'pdf', label: 'PDF', icon: FileText, desc: 'Printable management document with KPIs, distributions, tables and notes.' },
-  { key: 'xlsx', label: 'Excel', icon: FileSpreadsheet, desc: 'Multi-sheet workbook: summary, employees, projects, tickets, deployments, activities, data quality.' },
+  { key: 'xlsx', label: 'Excel', icon: FileSpreadsheet, desc: 'Multi-sheet workbook: summary, employees, projects, tickets, deployments, work items, data quality.' },
   { key: 'csv', label: 'CSV', icon: FileType, desc: 'Flat export of the primary detail table for the chosen report.' },
 ] as const
 
@@ -68,7 +68,7 @@ export default function ReportsPage() {
               <FileOutput className="h-4 w-4" /> New report
             </CardTitle>
             <CardDescription>
-              Period: <b>{effectiveRange[0]} – {effectiveRange[1]}</b>. Change it using the date selector above.
+              Period: <b>{effectiveRange[0]} - {effectiveRange[1]}</b>. Change it using the date selector above.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -87,9 +87,9 @@ export default function ReportsPage() {
               <div>
                 <Label>2. Select {type.replace('_', ' ')}</Label>
                 <div className="mt-2 flex items-center gap-2">
-                  <MultiSelect label={type === 'jira_board' ? 'Board' : type[0].toUpperCase() + type.slice(1)} options={targetOptions} value={target ? [target] : []} onChange={(v) => setTarget(v[v.length - 1] ?? '')} width="w-[320px]" placeholder="Choose…" />
+                  <MultiSelect label={type === 'jira_board' ? 'Board' : type[0].toUpperCase() + type.slice(1)} options={targetOptions} value={target ? [target] : []} onChange={(v) => setTarget(v[v.length - 1] ?? '')} width="w-[320px]" placeholder="Choose" />
                   <NativeSelect className="w-auto sm:hidden" value={target} onChange={(e) => setTarget(e.target.value)}>
-                    <option value="">Choose…</option>
+                    <option value="">Choose</option>
                     {targetOptions.map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
@@ -128,7 +128,7 @@ export default function ReportsPage() {
           <CardContent className="space-y-3 text-xs text-muted-foreground">
             <div>
               <p className="font-medium text-foreground">Individual employee (PDF)</p>
-              <p>Employee details, reporting period, KPI summary, Jira status distribution, deployment & production summaries, Jira tickets, dev deployment detail, production releases, detailed activity table and Additional Work Notes.</p>
+              <p>Employee details, reporting period, KPI summary, Jira status distribution, deployment & production summaries, Jira tickets, dev deployment detail, production releases, work items table and Additional Work Notes.</p>
             </div>
             <div>
               <p className="font-medium text-foreground">Consolidated management (PDF)</p>
@@ -136,7 +136,7 @@ export default function ReportsPage() {
             </div>
             <div>
               <p className="font-medium text-foreground">Excel workbook</p>
-              <p>Sheets: Executive Summary, Employee Summary, Project Summary, Jira Ticket Details, Development Deployment, Production Deployment, Detailed Activities, Data Quality — with filters, frozen headers and conditional formatting.</p>
+              <p>Sheets: Executive Summary, Employee Summary, Project Summary, Jira Ticket Details, Development Deployment, Production Deployment, Work Items, Data Quality - with filters, frozen headers and conditional formatting.</p>
             </div>
           </CardContent>
         </Card>
@@ -159,7 +159,7 @@ export default function ReportsPage() {
                   <span className="font-medium">{r.file_name}</span>
                   <span className="text-xs text-muted-foreground">
                     {r.report_type.replace('_', ' ')}
-                    {r.target && ` · ${r.target}`} · {r.period} · {fileSize(r.size_bytes)} · {new Date(r.created_at).toLocaleTimeString()}
+                    {r.target && ` | ${r.target}`} | {r.period} | {fileSize(r.size_bytes)} | {new Date(r.created_at).toLocaleTimeString()}
                   </span>
                   <Button asChild variant="outline" size="sm" className="ml-auto">
                     <a href={reportApi.downloadUrl(r.report_id)} target="_blank" rel="noreferrer">

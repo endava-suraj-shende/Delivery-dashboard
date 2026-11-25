@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,7 +29,7 @@ export function MultiSelect({ label, options, value, onChange, className, placeh
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-2">
-        <Input autoFocus placeholder={`Search ${label.toLowerCase()}â€¦`} value={q} onChange={(e) => setQ(e.target.value)} className="mb-2 h-8" />
+        <Input autoFocus placeholder={`Search ${label.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} className="mb-2 h-8" />
         <div className="max-h-64 overflow-auto">
           {filtered.length === 0 && <p className="p-2 text-xs text-muted-foreground">No matches</p>}
           {filtered.map((o) => {

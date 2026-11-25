@@ -14,7 +14,7 @@ function shade(value: number, max: number, hue: 'green' | 'blue'): string {
 
 /**
  * Week-by-week grid: one row per employee, one column per week.
- * Every cell prints "new → done" so no hover is needed; colour shows how much was completed.
+ * Every cell prints "new to done" so no hover is needed; colour shows how much was completed.
  */
 export function WeeklyTimeline({ data, onEmployee, maxRows = 30, compact }: { data: WeeklyByEmployee; onEmployee?: (name: string) => void; maxRows?: number; compact?: boolean }) {
   const nav = useNavigate()
@@ -23,7 +23,7 @@ export function WeeklyTimeline({ data, onEmployee, maxRows = 30, compact }: { da
   const maxDone = Math.max(1, ...rows.flatMap((r) => r.weeks.map((c) => c.completed)))
   const maxNew = Math.max(1, ...rows.flatMap((r) => r.weeks.map((c) => c.new)))
   const go = onEmployee ?? ((n: string) => nav(`/employees/${encodeURIComponent(n)}`))
-  const weekLabel = (w: string, i: number) => `W${i + 1} · ${fmtDate(w, { day: '2-digit', month: 'short' })}`
+  const weekLabel = (w: string, i: number) => `W${i + 1} | ${fmtDate(w, { day: '2-digit', month: 'short' })}`
   return (
     <div className="overflow-auto rounded-md border">
       <table className="w-full border-collapse text-xs">
@@ -37,7 +37,7 @@ export function WeeklyTimeline({ data, onEmployee, maxRows = 30, compact }: { da
             <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Total done</th>
           </tr>
           <tr className="text-[10px] font-normal">
-            <th className="sticky left-0 z-20 bg-muted px-3 pb-1 text-left">each cell: <span className="text-blue-600">new</span> → <span className="text-green-600">done</span></th>
+            <th className="sticky left-0 z-20 bg-muted px-3 pb-1 text-left">each cell: <span className="text-blue-600">new</span> to <span className="text-green-600">done</span></th>
             {data.weeks.map((w) => <th key={w} />)}
             <th /><th />
           </tr>
@@ -58,7 +58,7 @@ export function WeeklyTimeline({ data, onEmployee, maxRows = 30, compact }: { da
             {data.weeks.map((w, i) => {
               const n = rows.reduce((s, r) => s + (r.weeks[i]?.new ?? 0), 0)
               const d = rows.reduce((s, r) => s + (r.weeks[i]?.completed ?? 0), 0)
-              return <td key={w} className="px-2 py-1.5 text-center tabular-nums whitespace-nowrap"><span className="text-blue-600">{n}</span> → <span className="text-green-600">{d}</span></td>
+              return <td key={w} className="px-2 py-1.5 text-center tabular-nums whitespace-nowrap"><span className="text-blue-600">{n}</span> to <span className="text-green-600">{d}</span></td>
             })}
             <td className="px-3 py-1.5 text-right tabular-nums text-blue-600">{rows.reduce((s, r) => s + r.total_new, 0)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums text-green-600">{rows.reduce((s, r) => s + r.total_completed, 0)}</td>
@@ -75,12 +75,12 @@ function Cell({ c, maxDone, maxNew, compact }: { c: WeeklyCell; maxDone: number;
   const title = empty ? undefined : `Week of ${fmtDate(c.week)}: ${c.new} ticket(s) started, ${c.completed} completed, ${c.worked} worked on (${c.activities} updates)${c.blocked ? `, ${c.blocked} blocked` : ''}`
   return (
     <td className={cn('px-2 py-1.5 text-center tabular-nums whitespace-nowrap', cls, empty && 'text-muted-foreground/40')} title={title}>
-      {empty ? '·' : (
+      {empty ? '|' : (
         <>
           <span className={cn(!cls.includes('text-white') && 'text-blue-700 dark:text-blue-300')}>{c.new}</span>
-          <span className="opacity-60"> → </span>
+          <span className="opacity-60"> to </span>
           <span className={cn('font-medium', !cls.includes('text-white') && 'text-green-700 dark:text-green-300')}>{c.completed}</span>
-          {!compact && c.blocked > 0 && <span className="ml-1 text-red-600">⛔{c.blocked}</span>}
+          {!compact && c.blocked > 0 && <span className="ml-1 text-red-600">Blocked {c.blocked}</span>}
         </>
       )}
     </td>

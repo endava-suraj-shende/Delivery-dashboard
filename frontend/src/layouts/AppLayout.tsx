@@ -65,7 +65,7 @@ export function AppLayout() {
     mutationFn: excelApi.refresh,
     onSuccess: (s) => {
       qc.invalidateQueries()
-      toast({ title: 'Data refreshed', description: `${s.report_count} reports · ${s.activity_count} activities · ${s.release_count} releases`, variant: 'success' })
+      toast({ title: 'Data refreshed', description: `${s.report_count} reports | ${s.activity_count} activities | ${s.release_count} releases`, variant: 'success' })
     },
     onError: (e) => toast({ title: 'Refresh failed', description: errorMessage(e), variant: 'destructive' }),
   })
@@ -115,10 +115,10 @@ export function AppLayout() {
             <p className="flex items-center gap-1 font-medium text-sidebar-foreground">
               {status.source === 'excel' ? <Database className="h-3 w-3" /> : <Plug className="h-3 w-3" />} Source: {status.source === 'jira' ? 'Jira boards' : status.source === 'both' ? 'Jira + Excel' : 'Excel'}
             </p>
-            {status.jira ? <p>{status.jira.boards.length} board(s) · {status.jira.issues} issues</p> : <p>{status.file_count} files</p>}
-            <p>{status.activity_count} activities · {status.employee_count} employees · {status.project_count} projects</p>
-            <p>Range: {fmtDate(status.date_min, { day: '2-digit', month: 'short' })} – {fmtDate(status.date_max, { day: '2-digit', month: 'short' })}</p>
-            <p className="truncate">Refreshed {status.last_refresh ? new Date(status.last_refresh).toLocaleTimeString() : '–'}</p>
+            {status.jira ? <p>{status.jira.boards.length} board(s) | {status.jira.issues} issues</p> : <p>{status.file_count} files</p>}
+            <p>{status.activity_count} activities | {status.employee_count} employees | {status.project_count} projects</p>
+            <p>Range: {fmtDate(status.date_min, { day: '2-digit', month: 'short' })} - {fmtDate(status.date_max, { day: '2-digit', month: 'short' })}</p>
+            <p className="truncate">Refreshed {status.last_refresh ? new Date(status.last_refresh).toLocaleTimeString() : '-'}</p>
           </div>
         )}
         <Button variant="ghost" size="sm" className="hidden w-full justify-center text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground lg:flex" onClick={() => setCollapsed((c) => !c)}>
@@ -146,15 +146,15 @@ export function AppLayout() {
           <GlobalSearch />
           <div className="ml-auto flex items-center gap-2">
             {status && (
-              <HelpTip text={`Source: ${status.source_dir}\nLast refresh: ${status.last_refresh ? new Date(status.last_refresh).toLocaleString() : '–'}\nLoad time: ${status.load_duration_ms ?? '–'} ms`}>
+              <HelpTip text={`Source: ${status.source_dir}\nLast refresh: ${status.last_refresh ? new Date(status.last_refresh).toLocaleString() : '-'}\nLoad time: ${status.load_duration_ms ?? '-'} ms`}>
                 <div className="hidden items-center gap-2 md:flex">
                   <Badge variant={status.needs_refresh ? 'warning' : 'success'} className="gap-1 font-normal">
                     {status.source === 'excel' ? <FileSpreadsheet className="h-3 w-3" /> : <Plug className="h-3 w-3" />}
                     {status.source === 'excel'
                       ? <>{status.file_count} workbooks{status.uploads > 0 && ` (+${status.uploads} uploaded)`}</>
-                      : <>{status.jira?.boards.length ?? 0} Jira board(s) · {status.jira?.issues ?? 0} issues{status.source === 'both' && ` + ${status.file_count - (status.jira?.boards.length ?? 0)} workbooks`}</>}
+                      : <>{status.jira?.boards.length ?? 0} Jira board(s) | {status.jira?.issues ?? 0} issues{status.source === 'both' && ` + ${status.file_count - (status.jira?.boards.length ?? 0)} workbooks`}</>}
                   </Badge>
-                  {status.needs_refresh && <span className="text-[11px] text-orange-600">{status.source === 'excel' ? 'Source changed — refresh' : 'Refresh due'}</span>}
+                  {status.needs_refresh && <span className="text-[11px] text-orange-600">{status.source === 'excel' ? 'Source changed - refresh' : 'Refresh due'}</span>}
                 </div>
               </HelpTip>
             )}

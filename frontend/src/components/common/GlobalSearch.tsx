@@ -51,12 +51,12 @@ export function GlobalSearch() {
           }
           if (e.key === 'Escape') setOpen(false)
         }}
-        placeholder="Search employees, tickets, projects, apps, notes…  (Enter = filter all)"
+        placeholder="Search employees, tickets, projects, apps or notes (Enter = filter all)"
         className="h-9 pl-8"
       />
       {open && debounced && (
         <div className="absolute left-0 right-0 top-10 z-50 max-h-[70vh] overflow-auto rounded-md border bg-popover p-2 shadow-lg text-sm">
-          {!data && <p className="p-2 text-xs text-muted-foreground">Searching…</p>}
+          {!data && <p className="p-2 text-xs text-muted-foreground">Searching</p>}
           {empty && <p className="p-2 text-xs text-muted-foreground">No matches. Press Enter to filter all records by text.</p>}
           <Section title="Employees" icon={<User className="h-3.5 w-3.5" />} items={data?.employees} render={(e) => <Row key={e} label={e} onClick={() => go(`/employees/${encodeURIComponent(e)}`)} />} />
           <Section title="Projects" icon={<FolderKanban className="h-3.5 w-3.5" />} items={data?.projects} render={(p) => <Row key={p} label={p} onClick={() => go(`/projects/${encodeURIComponent(p)}`)} />} />
@@ -94,8 +94,8 @@ export function GlobalSearch() {
               />
             )}
           />
-          <Section title="Tickets" icon={<Ticket className="h-3.5 w-3.5" />} items={data?.tickets} render={(t) => <Row key={t.ticket_id} label={t.ticket_id} sub={`${t.employee} · ${truncate(t.work_details, 60)}`} onClick={() => go(`/jira?ticket=${encodeURIComponent(t.ticket_id)}`)} />} />
-          <Section title="Notes / details" icon={<FileText className="h-3.5 w-3.5" />} items={data?.notes} render={(n) => <Row key={n.activity_id} label={truncate(n.work_details ?? n.comments, 70)} sub={`${n.employee}${n.ticket_id ? ` · ${n.ticket_id}` : ''}`} onClick={() => go(n.ticket_id ? `/jira?ticket=${encodeURIComponent(n.ticket_id)}` : `/employees/${encodeURIComponent(n.employee)}`)} />} />
+          <Section title="Tickets" icon={<Ticket className="h-3.5 w-3.5" />} items={data?.tickets} render={(t) => <Row key={t.ticket_id} label={t.ticket_id} sub={`${t.employee} | ${truncate(t.work_details, 60)}`} onClick={() => go(`/jira?ticket=${encodeURIComponent(t.ticket_id)}`)} />} />
+          <Section title="Notes / details" icon={<FileText className="h-3.5 w-3.5" />} items={data?.notes} render={(n) => <Row key={n.activity_id} label={truncate(n.work_details ?? n.comments, 70)} sub={`${n.employee}${n.ticket_id ? ` | ${n.ticket_id}` : ''}`} onClick={() => go(n.ticket_id ? `/jira?ticket=${encodeURIComponent(n.ticket_id)}` : `/employees/${encodeURIComponent(n.employee)}`)} />} />
         </div>
       )}
     </div>

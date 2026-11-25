@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarRange, ChevronRight, Filter, Printer, X, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -55,7 +55,7 @@ export function PeriodBadge({ period }: { period: Period }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {sprint.length ? (
-        <Badge variant="info" className="gap-1" title="A sprint is a period of its own â€” the date range is not applied while a sprint is selected.">
+        <Badge variant="info" className="gap-1" title="A sprint is a period of its own - the date range is not applied while a sprint is selected.">
           <Zap className="h-3 w-3" /> Sprint: {sprint.join(', ')}
         </Badge>
       ) : (
@@ -64,7 +64,7 @@ export function PeriodBadge({ period }: { period: Period }) {
         </Badge>
       )}
       <span>
-        {!sprint.length && period.days > 0 && `${period.days} days Â· `}
+        {!sprint.length && period.days > 0 && `${period.days} days | `}
         {period.report_count} {period.report_count === 1 ? 'report' : 'reports'}
       </span>
     </div>
@@ -87,7 +87,7 @@ export function DateRangePicker() {
     setStart(effectiveRange[0] ?? '')
     setEnd(effectiveRange[1] ?? '')
   }, [effectiveRange])
-  const label = filters.preset === 'custom' ? `${fmtDate(effectiveRange[0])} â€“ ${fmtDate(effectiveRange[1])}` : PRESET_LABELS[filters.preset]
+  const label = filters.preset === 'custom' ? `${fmtDate(effectiveRange[0])} - ${fmtDate(effectiveRange[1])}` : PRESET_LABELS[filters.preset]
   return (
     <Popover>
       <PopoverTrigger asChild>

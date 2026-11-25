@@ -37,13 +37,13 @@ export default function JiraConnectionsPage() {
   const test = useMutation({ mutationFn: () => jiraLiveApi.testUrl({ url, ...creds }), onSuccess: setTestResult, onError: (e) => toast({ title: 'Test failed', description: errorMessage(e), variant: 'destructive' }) })
   const add = useMutation({
     mutationFn: () => jiraLiveApi.addBoard({ url, label: label || undefined, ...creds }),
-    onSuccess: (b) => { qc.invalidateQueries(); setUrl(''); setLabel(''); setEmail(''); setToken(''); setTestResult(null); toast({ title: 'Board added', description: `${b.label} (${b.project_key ?? '?'} · board ${b.board_id}) — saved; it will be loaded automatically from now on`, variant: 'success' }) },
+    onSuccess: (b) => { qc.invalidateQueries(); setUrl(''); setLabel(''); setEmail(''); setToken(''); setTestResult(null); toast({ title: 'Board added', description: `${b.label} (${b.project_key ?? '?'} | board ${b.board_id}) - saved; it will be loaded automatically from now on`, variant: 'success' }) },
     onError: (e) => toast({ title: 'Could not add board', description: errorMessage(e), variant: 'destructive' }),
   })
   const update = useMutation({ mutationFn: ({ id, body }: { id: string; body: Parameters<typeof jiraLiveApi.updateBoard>[1] }) => jiraLiveApi.updateBoard(id, body), onSuccess: invalidate, onError: (e) => toast({ title: 'Update failed', description: errorMessage(e), variant: 'destructive' }) })
   const retest = useMutation({ mutationFn: jiraLiveApi.testBoard, onSuccess: (r) => { invalidate(); toast({ title: r.ok ? 'Connection OK' : 'Connection failed', description: r.board.board_name ?? r.board.last_error ?? '', variant: r.ok ? 'success' : 'destructive' }) }, onError: (e) => { invalidate(); toast({ title: 'Connection failed', description: errorMessage(e), variant: 'destructive' }) } })
   const remove = useMutation({ mutationFn: jiraLiveApi.deleteBoard, onSuccess: () => { invalidate(); setConfirmDelete(null); toast({ title: 'Board removed' }) } })
-  const sync = useMutation({ mutationFn: ({ force, board_id }: { force?: boolean; board_id?: string }) => jiraLiveApi.sync(force ?? true, board_id), onSuccess: (s) => { qc.invalidateQueries(); toast({ title: 'Jira synced', description: `${s.fetched_issues} issues fetched${s.errors.length ? ` · ${s.errors.length} error(s)` : ''}`, variant: s.errors.length ? 'destructive' : 'success' }) }, onError: (e) => toast({ title: 'Sync failed', description: errorMessage(e), variant: 'destructive' }) })
+  const sync = useMutation({ mutationFn: ({ force, board_id }: { force?: boolean; board_id?: string }) => jiraLiveApi.sync(force ?? true, board_id), onSuccess: (s) => { qc.invalidateQueries(); toast({ title: 'Jira synced', description: `${s.fetched_issues} issues fetched${s.errors.length ? ` | ${s.errors.length} error(s)` : ''}`, variant: s.errors.length ? 'destructive' : 'success' }) }, onError: (e) => toast({ title: 'Sync failed', description: errorMessage(e), variant: 'destructive' }) })
   const me = useMutation({ mutationFn: (site?: string) => jiraLiveApi.me(site), onSuccess: (m) => toast({ title: 'Credentials OK', description: `${m.display_name} (${m.email ?? 'email hidden'}) on ${m.site}`, variant: 'success' }), onError: (e) => toast({ title: 'Credential check failed', description: errorMessage(e), variant: 'destructive' }) })
   const discover = useQuery({ queryKey: ['jira', 'discover', discoverSite], queryFn: () => jiraLiveApi.discover(discoverSite || undefined), enabled: false })
   const addDiscovered = useMutation({ mutationFn: (u: string) => jiraLiveApi.addBoard({ url: u }), onSuccess: () => { invalidate(); discover.refetch() }, onError: (e) => toast({ title: 'Could not add board', description: errorMessage(e), variant: 'destructive' }) })
@@ -55,7 +55,7 @@ export default function JiraConnectionsPage() {
     <>
       <PageHeader
         title="Jira Connections"
-        description="Connect the dashboards to live Jira. Paste board links — site, project and board id are detected automatically. Enter the Atlassian email and API token here (stored encrypted) or keep them in .env."
+        description="Connect the dashboards to live Jira. Paste board links - site, project and board id are detected automatically. Enter the Atlassian email and API token here (stored encrypted) or keep them in .env."
         breadcrumbs={[{ label: 'Jira Connections' }]}
         actions={
           <>
@@ -108,7 +108,7 @@ export default function JiraConnectionsPage() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    The board and its credentials are saved (token encrypted) and loaded automatically on every start — you only enter them once per board.
+                    The board and its credentials are saved (token encrypted) and loaded automatically on every start - you only enter them once per board.
                   </p>
                   <details className="text-xs text-muted-foreground">
                     <summary className="cursor-pointer">Use credentials from environment variables instead</summary>
@@ -129,7 +129,7 @@ export default function JiraConnectionsPage() {
                     {testResult && (
                       <span className={cn('flex items-center gap-1 text-sm', testResult.ok ? 'text-green-600' : 'text-red-600')}>
                         {testResult.ok ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                        {testResult.ok ? <>Found <b>{testResult.board.board_name}</b> ({testResult.board.board_type}, project {testResult.board.project_key}){testResult.active_sprints?.length ? ` · active sprint: ${testResult.active_sprints.join(', ')}` : ''}</> : testResult.error}
+                        {testResult.ok ? <>Found <b>{testResult.board.board_name}</b> ({testResult.board.board_type}, project {testResult.board.project_key}){testResult.active_sprints?.length ? ` | active sprint: ${testResult.active_sprints.join(', ')}` : ''}</> : testResult.error}
                       </span>
                     )}
                   </div>
@@ -139,7 +139,7 @@ export default function JiraConnectionsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Configured boards</CardTitle>
-                  <CardDescription>Tickets are routed to a board by their project key (e.g. OCS-5777 → OCS). Optionally list the exact "Jira Board:" names used in the Excel sheets so unusual keys can still be matched.</CardDescription>
+                  <CardDescription>Tickets are routed to a board by their project key (e.g. OCS-5777 to OCS). Optionally list the exact "Jira Board:" names used in the Excel sheets so unusual keys can still be matched.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {s.boards.length === 0 ? (
@@ -238,9 +238,9 @@ function CredentialsCard({ status: s }: { status: import('@/services/jiraApi').J
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <span className="flex items-center gap-2">
             <Plug className={cn('h-4 w-4', s.configured ? 'text-green-600' : 'text-orange-500')} />
-            {c?.configured ? <>Default credentials: <b>{c.email}</b> <span className="text-muted-foreground">({c.token_masked}, {c.source === 'ui' ? 'saved in app, encrypted' : 'from .env'})</span></> : <>No default credentials — add them below or give each board its own token.</>}
+            {c?.configured ? <>Default credentials: <b>{c.email}</b> <span className="text-muted-foreground">({c.token_masked}, {c.source === 'ui' ? 'saved in app, encrypted' : 'from .env'})</span></> : <>No default credentials - add them below or give each board its own token.</>}
           </span>
-          <span className="text-muted-foreground">{s.boards.length} board(s) · {s.fetched_issues} issues fetched · last sync {s.last_sync ? new Date(s.last_sync).toLocaleString() : 'never'}</span>
+          <span className="text-muted-foreground">{s.boards.length} board(s) | {s.fetched_issues} issues fetched | last sync {s.last_sync ? new Date(s.last_sync).toLocaleString() : 'never'}</span>
           {s.uncovered_projects.length > 0 && <Badge variant="warning" title="Jira project keys found in the data that no configured board covers">No board for: {s.uncovered_projects.join(', ')}</Badge>}
           {s.errors.map((e) => <Badge key={e.scope} variant="danger" title={e.error}>{e.scope}: {e.error.slice(0, 80)}</Badge>)}
           <div className="ml-auto flex gap-2">
@@ -256,7 +256,7 @@ function CredentialsCard({ status: s }: { status: import('@/services/jiraApi').J
             </div>
             <div>
               <Label>API token</Label>
-              <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Create at id.atlassian.com → Security → API tokens" className="mt-1" autoComplete="new-password" required />
+              <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Create at id.atlassian.com under Security, API tokens" className="mt-1" autoComplete="new-password" required />
             </div>
             <div className="flex items-end">
               <Button type="submit" disabled={save.isPending || !email || !token}>{save.isPending ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Save</Button>
@@ -285,12 +285,12 @@ function BoardRow({ board: b, excelBoardNames, onToggle, onLabel, onAliases, onT
         <Switch checked={b.enabled} onCheckedChange={onToggle} aria-label="Enabled" />
         <Input value={label} onChange={(e) => setLabel(e.target.value)} onBlur={() => label !== b.label && onLabel(label)} className="h-8 w-56 font-medium" />
         <Badge variant="info">{b.project_key ?? '?'}</Badge>
-        <span className="text-xs text-muted-foreground">board #{b.board_id} · {b.board_type ?? '?'} · {b.base_url.replace('https://', '')}</span>
+        <span className="text-xs text-muted-foreground">board #{b.board_id} | {b.board_type ?? '?'} | {b.base_url.replace('https://', '')}</span>
         {b.has_custom_credentials && <Badge variant="secondary" title={b.credential_source === 'ui' ? `Own credentials (${b.email ?? 'email n/a'}), token encrypted` : `Uses ${b.token_env}`}>own credentials{b.email ? `: ${b.email}` : ''}</Badge>}
         {b.people.length > 0 && <Badge variant="info" title={b.people.join(', ')}><Users className="mr-1 h-3 w-3" /> {b.people.length} people</Badge>}
         {b.last_test_ok === true && <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> reachable</Badge>}
         {b.last_test_ok === false && <Badge variant="danger" className="gap-1" title={b.last_error ?? ''}><AlertTriangle className="h-3 w-3" /> {b.last_error?.slice(0, 60) ?? 'error'}</Badge>}
-        <span className="ml-auto text-xs text-muted-foreground">{b.last_sync ? `synced ${new Date(b.last_sync).toLocaleString()} · ${b.last_sync_issues} issues` : 'not synced yet'}</span>
+        <span className="ml-auto text-xs text-muted-foreground">{b.last_sync ? `synced ${new Date(b.last_sync).toLocaleString()} | ${b.last_sync_issues} issues` : 'not synced yet'}</span>
         <Button size="xs" variant="outline" onClick={onTest} disabled={busy}><Link2 /> Test</Button>
         <Button size="xs" variant="outline" onClick={onSync} disabled={busy || !b.enabled}><RefreshCw /> Sync</Button>
         <Button size="xs" variant={showPeople ? 'default' : 'outline'} onClick={() => setShowPeople((v) => !v)}><Users /> People</Button>
@@ -328,7 +328,7 @@ function BoardRow({ board: b, excelBoardNames, onToggle, onLabel, onAliases, onT
           <Badge key={n} variant="secondary" className="gap-1 pr-1">{n}<button onClick={() => onAliases(b.excel_board_names.filter((x) => x !== n))} className="rounded-sm p-0.5 hover:bg-background"><XCircle className="h-3 w-3" /></button></Badge>
         ))}
         <NativeSelect className="h-7 w-auto text-xs" value="" onChange={(e) => e.target.value && onAliases([...b.excel_board_names, e.target.value])}>
-          <option value="">+ add from Excel…</option>
+          <option value="">+ add from Excel</option>
           {excelBoardNames.filter((n) => !b.excel_board_names.includes(n)).map((n) => <option key={n} value={n}>{n}</option>)}
         </NativeSelect>
       </div>
@@ -344,7 +344,7 @@ function UserMappingCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Excel employee ↔ Jira user</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Excel employee and Jira user mapping</CardTitle>
         <CardDescription>Auto-matched by display name / email. Override where the match is wrong or missing; this drives assignee checks and "missing from Excel" detection.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -364,7 +364,7 @@ function UserMappingCard() {
                       const u = q.data!.jira_users.find((x) => x.account_id === e.target.value)
                       set.mutate(u ? { employee: m.employee, account_id: u.account_id, display_name: u.display_name, email: u.email } : { employee: m.employee, account_id: null, display_name: null, email: null })
                     }}>
-                      <option value="">{m.match === 'manual' ? '— clear override —' : 'Keep automatic'}</option>
+                      <option value="">{m.match === 'manual' ? '- clear override -' : 'Keep automatic'}</option>
                       {q.data!.jira_users.map((u) => <option key={u.account_id} value={u.account_id}>{u.display_name}{u.email ? ` (${u.email})` : ''}</option>)}
                     </NativeSelect>
                   </td>
