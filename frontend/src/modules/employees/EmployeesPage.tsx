@@ -5,7 +5,6 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, AlertOctagon, CheckCircle2, Hourglass, Ticket, Users, UserX } from 'lucide-react'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
-import { DataTable } from '@/components/common/DataTable'
 import { ChartCard, DonutChart, StackedBarChart, TrendChart, CHART_HEIGHT_TALL, type StackSeries } from '@/components/charts'
 import { EmployeeSnapshotTable } from '@/components/common/EmployeeSnapshotTable'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
@@ -13,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { useFilters } from '@/hooks/useFilters'
 import { dashboardApi, employeeApi } from '@/services/api'
-import { cn, fmtDate } from '@/lib/utils'
+import { fmtDate } from '@/lib/utils'
 import { FEATURES } from '@/lib/features'
 import type { EmployeeRow } from '@/types'
 
@@ -45,30 +44,6 @@ export function employeeColumns(includeProject = true): ColumnDef<EmployeeRow, u
   return cols
 }
 
-export function statusColumns(): ColumnDef<EmployeeRow, unknown>[] {
-  const num = (key: keyof EmployeeRow, header: string, cls?: string): ColumnDef<EmployeeRow, unknown> => ({
-    accessorKey: key,
-    header,
-    cell: ({ getValue }) => <span className={cn('tabular-nums', cls, (getValue() as number) === 0 && 'text-muted-foreground/50')}>{getValue() as number}</span>,
-  })
-  return [
-    { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <span className="font-medium whitespace-nowrap">{getValue() as string}</span> },
-    { accessorKey: 'project', header: 'Project / Team', cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span> },
-    num('unique_tickets', 'Assigned', 'font-medium'),
-    num('completed', 'Completed', 'text-green-600 font-medium'),
-    num('development_tickets', 'In development', 'text-blue-600'),
-    num('code_review', 'Code review', 'text-indigo-600'),
-    num('testing_tickets', 'Testing / QA', 'text-purple-600'),
-    num('ready_for_deployment', 'Ready to deploy', 'text-teal-600'),
-    num('backlog', 'Backlog'),
-    num('on_hold', 'On hold', 'text-yellow-600'),
-    num('blocked', 'Blocked', 'text-red-600 font-medium'),
-    num('dev_deployed', 'Dev deployed'),
-    num('production_released', 'Prod deployed'),
-    { accessorKey: 'last_report_date', header: 'Last update', cell: ({ getValue }) => <span className="whitespace-nowrap text-xs">{fmtDate(getValue() as string)}</span> },
-  ]
-}
-
 /** Ticket-status series used by the employee charts (unique tickets by latest status). */
 export const EMP_STATUS_SERIES: StackSeries[] = [
   { key: 'completed', label: 'Completed', color: 'green' },
@@ -87,8 +62,6 @@ export default function EmployeesPage() {
   const q = useQuery({ queryKey: ['employees', queryString], queryFn: () => employeeApi.list(queryString), placeholderData: (p) => p })
   const team = useQuery({ queryKey: ['team', queryString], queryFn: () => dashboardApi.team(queryString), placeholderData: (p) => p })
   const [view, setView] = useState<'status' | 'detail'>('status')
-  const statusCols = useMemo(() => statusColumns(), [])
-  const detailCols = useMemo(() => employeeColumns(), [])
   const qs = queryString ? `?${queryString}` : ''
   const go = (n: string) => nav(`/employees/${encodeURIComponent(n)}${qs}`)
   const d = q.data
@@ -130,14 +103,9 @@ export default function EmployeesPage() {
             </ChartCard>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <ChartCard title="Assigned vs completed" description="Unique tickets per person. Bar length = assigned (relative to the busiest person); green = completed, blue = in progress. Click a row to open the employee." height="auto">
-              <EmployeeSnapshotTable variant="assigned" rows={rows} onRow={go} pageSize={10} />
-            </ChartCard>
-            <ChartCard title="Deployments by employee" description="Dev deployments and production releases per person. Bar = deployed total (teal dev, purple production). Click a row to open the employee." height="auto">
-              <EmployeeSnapshotTable variant="deploy" rows={rows} onRow={go} pageSize={10} />
-            </ChartCard>
-          </div>
+          <ChartCard title="Delivery and deployment by employee" description="Per person, left to right: tickets assigned, completed and in progress, what reached dev and production, and overall progress (completed counts fully, in progress counts half; bar length = assigned). Click a row to open the employee." height="auto">
+            <EmployeeSnapshotTable variant="flow" rows={rows} onRow={go} pageSize={15} />
+          </ChartCard>
 
           {team.data && (
             <ChartCard title="Completion trend" description="Completed tickets and open backlog per day across the selected people.">
@@ -149,7 +117,7 @@ export default function EmployeesPage() {
             <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
               <div>
                 <CardTitle>Employees with activity in period ({rows.length})</CardTitle>
-                <CardDescription>Unique tickets per person by latest status. Click a row to open the individual dashboard.</CardDescription>
+                <CardDescription>Unique tickets per person by latest status; the Work detail view adds work-type and deployment counts. Click a row to open the individual dashboard.</CardDescription>
               </div>
               <div className="flex items-center gap-1 rounded-md border p-0.5 text-xs">
                 <Button size="sm" variant={view === 'status' ? 'default' : 'ghost'} className="h-7" onClick={() => setView('status')}>Ticket status</Button>
@@ -157,7 +125,7 @@ export default function EmployeesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <DataTable key={view} data={rows} columns={view === 'status' ? statusCols : detailCols} onRowClick={(r) => go(r.employee)} exportName="employee-performance" dense initialSorting={[{ id: view === 'status' ? 'unique_tickets' : 'completed', desc: true }]} searchPlaceholder="Search employees" />
+              <EmployeeSnapshotTable key={view} variant={view === 'status' ? 'status' : 'detail'} rows={rows} onRow={go} pageSize={15} />
             </CardContent>
           </Card>
           {d.inactive.length > 0 && (

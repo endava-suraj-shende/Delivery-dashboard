@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/common/DataTable'
-import { cn, fmtNum } from '@/lib/utils'
+import { cn, fmtDate, fmtNum } from '@/lib/utils'
 import type { EmployeeRow } from '@/types'
 
 const right = { meta: { align: 'right' } } as const
@@ -34,11 +34,11 @@ function avatarColor(name: string): string {
   return AVATAR[h % AVATAR.length]
 }
 
-function EmployeeCell({ name }: { name: string }) {
+function EmployeeCell({ name, truncate }: { name: string; truncate?: boolean }) {
   return (
-    <span className="flex items-center gap-2.5 whitespace-nowrap">
+    <span className={cn('flex items-center gap-2.5', truncate ? 'min-w-0' : 'whitespace-nowrap')} title={name}>
       <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white', avatarColor(name))}>{initials(name)}</span>
-      <span className="font-medium">{name}</span>
+      <span className={cn('font-medium', truncate && 'truncate')}>{name}</span>
     </span>
   )
 }
@@ -48,9 +48,76 @@ function pill(key: keyof EmployeeRow, header: string, tone: string): ColumnDef<E
 }
 
 /** Compact executive view: one row per employee with exact counts, a progress bar and highlighted exceptions. */
-export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'delivery' }: { rows: EmployeeRow[]; onRow?: (name: string) => void; pageSize?: number; variant?: 'delivery' | 'open' | 'assigned' | 'deploy' }) {
+export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'delivery' }: { rows: EmployeeRow[]; onRow?: (name: string) => void; pageSize?: number; variant?: 'delivery' | 'open' | 'assigned' | 'deploy' | 'flow' | 'status' | 'detail' }) {
   const columns = useMemo<ColumnDef<EmployeeRow, unknown>[]>(() => {
     const employee: ColumnDef<EmployeeRow, unknown> = { accessorKey: 'employee', header: 'Employee', cell: ({ row }) => <EmployeeCell name={row.original.employee} /> }
+    if (variant === 'status') {
+      return [
+        { ...employee, size: 150, cell: ({ row }) => <EmployeeCell name={row.original.employee} truncate /> },
+        { accessorKey: 'project', header: 'Project / team', size: 110, cell: ({ getValue }) => <span className="block truncate text-xs text-muted-foreground" title={String(getValue() ?? '')}>{String(getValue() ?? '-')}</span> },
+        { accessorKey: 'unique_tickets', header: 'Assigned', size: 96, ...right, cell: ({ getValue }) => <span className="font-semibold tabular-nums">{getValue() as number}</span> },
+        { ...pill('completed', 'Completed', 'green'), size: 90 },
+        { ...pill('development_tickets', 'Development', 'blue'), size: 106 },
+        { ...pill('code_review', 'Review', 'indigo'), size: 80 },
+        { ...pill('testing_tickets', 'Testing', 'purple'), size: 80 },
+        { ...pill('backlog', 'Backlog', 'orange'), size: 76 },
+        { ...pill('on_hold', 'On hold', 'yellow'), size: 76 },
+        { accessorKey: 'last_report_date', header: 'Last update', size: 96, cell: ({ getValue }) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDate(getValue() as string)}</span> },
+      ]
+    }
+    if (variant === 'detail') {
+      return [
+        { ...employee, size: 136, cell: ({ row }) => <EmployeeCell name={row.original.employee} truncate /> },
+        { accessorKey: 'unique_tickets', header: 'Tickets', size: 76, ...right, cell: ({ getValue }) => <span className="font-semibold tabular-nums">{getValue() as number}</span> },
+        { ...pill('completed', 'Completed', 'green'), size: 104 },
+        { ...pill('in_progress', 'In progress', 'blue'), size: 94 },
+        { ...pill('pending', 'Pending', 'orange'), size: 80 },
+        { ...pill('blocked', 'Blocked', 'red'), size: 80 },
+        { ...pill('development', 'Dev work', 'indigo'), size: 86 },
+        { ...pill('testing', 'Test work', 'purple'), size: 86 },
+        { ...pill('dev_deployed', 'Dev deployed', 'teal'), size: 104 },
+        { ...pill('production_released', 'Prod deployed', 'purple'), size: 112 },
+      ]
+    }
+    if (variant === 'flow') {
+      const maxAssigned = Math.max(1, ...rows.map((r) => r.unique_tickets))
+      // Delivery progress: completed tickets count fully, in-progress tickets count half.
+      const progress = (r: EmployeeRow) => (r.unique_tickets ? Math.min(100, Math.round((100 * (r.completed + 0.5 * r.in_progress)) / r.unique_tickets)) : 0)
+      const flowEmployee: ColumnDef<EmployeeRow, unknown> = { ...employee, size: 130, cell: ({ row }) => <EmployeeCell name={row.original.employee} truncate /> }
+      return [
+        flowEmployee,
+        { accessorKey: 'unique_tickets', header: 'Assigned', size: 90, ...right, cell: ({ getValue }) => <span className="font-semibold tabular-nums">{getValue() as number}</span> },
+        { ...pill('completed', 'Completed', 'green'), size: 100 },
+        { ...pill('in_progress', 'In progress', 'blue'), size: 100 },
+        { ...pill('dev_deployed', 'Dev deployed', 'teal'), size: 100 },
+        { ...pill('dev_pending', 'Dev pending', 'orange'), size: 100 },
+        { ...pill('production_released', 'Prod deployed', 'purple'), size: 100 },
+        {
+          id: 'progress',
+          accessorFn: progress,
+          header: 'Progress',
+          size: 110,
+          cell: ({ row }) => {
+            const r = row.original
+            const pct = progress(r)
+            const done = r.unique_tickets ? Math.round((100 * r.completed) / r.unique_tickets) : 0
+            const prog = r.unique_tickets ? Math.round((100 * r.in_progress) / r.unique_tickets) : 0
+            const scale = (100 * r.unique_tickets) / maxAssigned
+            return (
+              <div className="flex min-w-0 items-center gap-2" title={`${r.completed} completed (100%) + ${r.in_progress} in progress (50%) of ${r.unique_tickets} assigned = ${pct}%`}>
+                <div className="h-2.5 flex-1">
+                  <div className="flex h-full overflow-hidden rounded-full bg-muted" style={{ width: `${Math.max(scale, 4)}%` }}>
+                    <div className="h-full bg-green-500" style={{ width: `${done}%` }} />
+                    <div className="h-full bg-blue-400/80" style={{ width: `${prog}%` }} />
+                  </div>
+                </div>
+                <span className={cn('w-10 text-right text-xs font-semibold tabular-nums', pct >= 50 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground')}>{fmtNum(pct, 0)}%</span>
+              </div>
+            )
+          },
+        },
+      ]
+    }
     if (variant === 'assigned') {
       const maxAssigned = Math.max(1, ...rows.map((r) => r.unique_tickets))
       return [
@@ -190,9 +257,11 @@ export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'd
       onRowClick={onRow ? (r) => onRow(r.employee) : undefined}
       pageSize={pageSize}
       dense
-      exportName={variant === 'open' ? 'employee-open-work' : variant === 'assigned' ? 'employee-assigned-vs-completed' : variant === 'deploy' ? 'employee-deployments' : 'employee-snapshot'}
+      compact={variant === 'flow' || variant === 'status' || variant === 'detail'}
+      fluid={variant === 'flow' || variant === 'status' || variant === 'detail'}
+      exportName={variant === 'open' ? 'employee-open-work' : variant === 'assigned' ? 'employee-assigned-vs-completed' : variant === 'deploy' ? 'employee-deployments' : variant === 'flow' ? 'employee-delivery-and-deployment' : variant === 'status' ? 'employee-ticket-status' : variant === 'detail' ? 'employee-work-detail' : 'employee-snapshot'}
       searchPlaceholder="Search employee"
-      initialSorting={[{ id: variant === 'open' ? 'open_total' : variant === 'deploy' ? 'deploy_total' : 'unique_tickets', desc: true }]}
+      initialSorting={[{ id: variant === 'open' ? 'open_total' : variant === 'deploy' ? 'deploy_total' : variant === 'detail' ? 'completed' : 'unique_tickets', desc: true }]}
       rowClassName={(r) => (variant !== 'deploy' && r.blocked > 0 ? 'bg-red-500/[0.05]' : undefined)}
     />
   )

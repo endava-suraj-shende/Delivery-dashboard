@@ -77,6 +77,8 @@ export default function SprintsPage() {
   const list = useQuery({ queryKey: ['sprints', listQs], queryFn: () => sprintApi.list(listQs) })
   const [velocityView, setVelocityView] = useState<string>('last:10')
   const [velocityUnit, setVelocityUnit] = useState<'points' | 'tickets' | null>(null)
+  const [tableUnit, setTableUnit] = useState<'tickets' | 'points'>('tickets')
+  const [tableRange, setTableRange] = useState<number | 'all'>(10)
   const items = useMemo(() => list.data?.items ?? [], [list.data])
   const names = useMemo(() => new Set(items.map((s) => s.name)), [items])
   const requested = sp.get('selected') ?? filters.sprint[0] ?? null
@@ -260,40 +262,77 @@ export default function SprintsPage() {
                         <ChartCard title="Completed velocity trend" description={`Completed ${unitLabel} per sprint with the average as a reference (${rangeLabel}).`} height={260}>
                           <TrendChart data={shown.map((s) => ({ date: shortName(s.name), completed: s.completed, average: avgAll ?? 0 }))} series={[{ key: 'completed', label: 'Completed', color: 'green' }, { key: 'average', label: 'Average', color: 'slate', dashed: true }]} />
                         </ChartCard>
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Velocity table</CardTitle>
-                            <CardDescription>One row per sprint, oldest first. Carry-over = committed - completed.</CardDescription>
-                          </CardHeader>
-                          <CardContent className="p-0">
-                            <table className="w-full text-xs">
-                              <thead className="bg-muted text-muted-foreground">
-                                <tr>
-                                  <th className="px-3 py-1.5 text-left font-medium">Sprint</th>
-                                  <th className="px-3 py-1.5 text-left font-medium">Dates</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Committed points</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Completed points</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Tickets</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Completed tickets</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Done %</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {v.items.map((s) => (
-                                  <tr key={s.name} className={cn('cursor-pointer border-t hover:bg-muted/40', s.state === 'active' && 'font-medium')} onClick={() => select(s.name)}>
-                                    <td className="px-3 py-1.5 whitespace-nowrap">{s.name}{s.state === 'active' && <Badge variant="success" className="ml-2">Active</Badge>}</td>
-                                    <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{s.start_date ? `${fmtDate(s.start_date, { day: '2-digit', month: 'short' })} - ${s.end_date ? fmtDate(s.end_date, { day: '2-digit', month: 'short' }) : 'open'}` : '-'}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed_points}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums text-green-600">{s.completed_points}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed_tickets}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums text-green-600">{s.completed_tickets}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed ? fmtPct((100 * s.completed) / s.committed) : '-'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </CardContent>
-                        </Card>
+                        {(() => {
+                          const tPts = tableUnit === 'points'
+                          const tRows = (tableRange === 'all' ? [...all] : all.slice(-tableRange)).reverse()
+                          const val = (x: (typeof all)[number]) => ({ committed: tPts ? x.committed_points : x.committed_tickets, completed: tPts ? x.completed_points : x.completed_tickets })
+                          const maxC = Math.max(1, ...tRows.map((x) => val(x).committed))
+                          const uLabel = tPts ? 'points' : 'tickets'
+                          return (
+                            <Card>
+                              <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+                                <div>
+                                  <CardTitle>Velocity table</CardTitle>
+                                  <CardDescription>Latest sprint first. Committed = {uLabel} of all tickets worked in the sprint; Completed = those finished; Carry-over = committed minus completed. Click a sprint to open it.</CardDescription>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <div className="flex items-center gap-0.5 rounded-md border p-0.5 text-xs">
+                                    <Button size="sm" variant={!tPts ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setTableUnit('tickets')}>Tickets</Button>
+                                    <Button size="sm" variant={tPts ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setTableUnit('points')}>Points</Button>
+                                  </div>
+                                  <NativeSelect value={String(tableRange)} onChange={(e) => setTableRange(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="h-8 w-[150px] text-xs">
+                                    <option value="5">Last 5 sprints</option>
+                                    <option value="10">Last 10 sprints</option>
+                                    <option value="15">Last 15 sprints</option>
+                                    <option value="all">All sprints ({all.length})</option>
+                                  </NativeSelect>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="p-0">
+                                <div className="overflow-hidden rounded-b-lg border-t">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-muted/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+                                      <tr className="border-b-2">
+                                        <th className="h-10 px-4 text-left font-semibold">Sprint</th>
+                                        <th className="h-10 px-3 text-left font-semibold">Dates</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Committed</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Completed</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Carry-over</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Done %</th>
+                                        <th className="h-10 px-4 text-left font-semibold">Completed vs committed</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {tRows.map((x) => {
+                                        const { committed, completed } = val(x)
+                                        const carry = Math.max(0, committed - completed)
+                                        const pct = committed ? Math.round((100 * completed) / committed) : null
+                                        return (
+                                          <tr key={x.name} className={cn('cursor-pointer border-b border-border/60 odd:bg-background even:bg-muted/20 hover:bg-primary/[0.06]', x.state === 'active' && 'font-medium')} onClick={() => select(x.name)}>
+                                            <td className="whitespace-nowrap px-4 py-2">{x.name}{x.state === 'active' && <Badge variant="success" className="ml-2">Active</Badge>}</td>
+                                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{x.start_date ? `${fmtDate(x.start_date, { day: '2-digit', month: 'short' })} - ${x.end_date ? fmtDate(x.end_date, { day: '2-digit', month: 'short' }) : 'open'}` : '-'}</td>
+                                            <td className="px-3 py-2 text-right font-semibold tabular-nums">{committed}</td>
+                                            <td className="px-3 py-2 text-right tabular-nums"><span className={cn('inline-block min-w-[2rem] rounded-full px-2 py-0.5 text-center', completed ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'text-muted-foreground/40')}>{completed}</span></td>
+                                            <td className="px-3 py-2 text-right tabular-nums"><span className={cn('inline-block min-w-[2rem] rounded-full px-2 py-0.5 text-center', carry ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400' : 'text-muted-foreground/40')}>{carry}</span></td>
+                                            <td className={cn('px-3 py-2 text-right font-semibold tabular-nums', pct === null ? 'text-muted-foreground' : pct >= 70 ? 'text-green-700 dark:text-green-400' : pct >= 40 ? 'text-orange-600' : 'text-red-600')}>{pct === null ? '-' : `${pct}%`}</td>
+                                            <td className="px-4 py-2">
+                                              <div className="h-2.5 w-full max-w-[260px]" title={`${completed} of ${committed} ${uLabel}`}>
+                                                <div className="flex h-full overflow-hidden rounded-full bg-muted" style={{ width: `${Math.max((100 * committed) / maxC, committed ? 4 : 0)}%` }}>
+                                                  <div className="h-full bg-green-500" style={{ width: `${pct ?? 0}%` }} />
+                                                </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                      {!tRows.length && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No sprints</td></tr>}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )
+                        })()}
                       </>
                     )
                   })()}
