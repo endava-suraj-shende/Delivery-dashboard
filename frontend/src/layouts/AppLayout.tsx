@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3,
@@ -22,6 +22,7 @@ import {
   Database,
   Plug,
   Zap,
+  LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HelpTip } from '@/components/ui/primitives'
@@ -31,6 +32,7 @@ import { GlobalSearch } from '@/components/common/GlobalSearch'
 import { useDataStatus } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { useTheme } from '@/hooks/useTheme'
+import { useSession } from '@/hooks/useSession'
 import { excelApi, errorMessage } from '@/services/api'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -60,6 +62,8 @@ export function AppLayout() {
   const qc = useQueryClient()
   const { toast } = useToast()
   const loc = useLocation()
+  const nav = useNavigate()
+  const { user, signOut } = useSession()
 
   const refresh = useMutation({
     mutationFn: excelApi.refresh,
@@ -164,6 +168,15 @@ export function AppLayout() {
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
+            {user && (
+              <HelpTip text={`${user.email}\nSigned in ${new Date(user.signedInAt).toLocaleString()}`}>
+                <div className="ml-1 flex items-center gap-2 rounded-full border py-1 pl-1 pr-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">{user.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</span>
+                  <span className="hidden max-w-[140px] truncate text-xs font-medium md:inline">{user.name}</span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { signOut(); nav('/welcome') }} aria-label="Sign out" title="Sign out"><LogOut className="h-3.5 w-3.5" /></Button>
+                </div>
+              </HelpTip>
+            )}
           </div>
         </header>
         <main key={loc.pathname} className="flex-1 overflow-y-auto p-4 md:p-6 print-full">
