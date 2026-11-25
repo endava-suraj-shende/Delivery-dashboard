@@ -185,15 +185,14 @@ export function ReleasesTable({ items, onTicket, pageSize = 25 }: { items: Relea
   const lookup = useCategoryLookup()
   const columns = useMemo<ColumnDef<Release, unknown>[]>(
     () => withFeatures<Release>([
-      { accessorKey: 'release_date', header: 'Release date', cell: ({ row }) => <span className="whitespace-nowrap" title={row.original.release_date_source === 'cell' ? 'From Production Release Date column' : 'No release date in Excel; using report date'}>{fmtDate(row.original.release_date)}{row.original.release_date_source !== 'cell' && <span className="ml-1 text-[10px] text-muted-foreground">(report)</span>}</span> },
-      { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} /> },
-      { accessorKey: 'project', header: 'Project', cell: ({ getValue }) => <ProjectLink name={getValue() as string} /> },
-      { accessorKey: 'application', header: 'Application' },
-      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '-'}</span>) },
-      { accessorKey: 'release_details', header: 'Release details', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 100)}</span>, size: 320 },
+      { accessorKey: 'release_date', header: 'Release date', cell: ({ row }) => <span className="whitespace-nowrap tabular-nums text-muted-foreground" title={row.original.release_date_source === 'cell' ? 'From Production Release Date column' : 'No release date recorded; using report date'}>{fmtDate(row.original.release_date)}{row.original.release_date_source !== 'cell' && <span className="ml-1 text-[10px]">(report)</span>}</span>, size: 110 },
+      { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} avatar /> },
+      { accessorKey: 'project', header: 'Project', cell: ({ getValue }) => <span className="whitespace-nowrap"><ProjectLink name={getValue() as string} /></span> },
+      { accessorKey: 'application', header: 'Application', cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{(getValue() as string) || '-'}</span> },
+      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} chip />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '-'}</span>) },
+      { accessorKey: 'release_details', header: 'Release details', cell: ({ getValue }) => <span className="line-clamp-2 max-w-[360px]" title={getValue() as string}>{getValue() as string}</span>, size: 360 },
       { accessorKey: 'prod_deployment', header: 'Production status', cell: ({ row }) => <CategoryCell dim="prod_deployment" value={row.original.prod_deployment} raw={row.original.prod_deployment_raw} />, filterFn: 'equalsString' },
-      { accessorKey: 'comments', header: 'Comments', cell: ({ getValue }) => truncate(getValue() as string, 60) },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 28)} | r{row.original.source_row}</span> },
+      { accessorKey: 'comments', header: 'Comments', cell: ({ getValue }) => <span className="line-clamp-2 max-w-[240px] text-muted-foreground" title={getValue() as string}>{(getValue() as string) || '-'}</span> },
     ]),
     [onTicket],
   )

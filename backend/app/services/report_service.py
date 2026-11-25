@@ -13,7 +13,8 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -21,6 +22,7 @@ from reportlab.platypus import (
     KeepTogether,
     PageBreak,
     Paragraph,
+    KeepTogether,
     SimpleDocTemplate,
     Spacer,
     Table,
@@ -39,7 +41,37 @@ COLOR_HEX = {"green": "16A34A", "blue": "2563EB", "orange": "F97316", "amber": "
              "grey": "6B7280", "purple": "7C3AED", "teal": "0D9488", "cyan": "0891B2", "indigo": "4F46E5"}
 NAVY = colors.HexColor("#1E293B")
 LIGHT = colors.HexColor("#F1F5F9")
+ZEBRA = colors.HexColor("#F8FAFC")
 BORDER = colors.HexColor("#CBD5E1")
+MUTED = colors.HexColor("#64748B")
+ACCENT = colors.HexColor("#2563EB")
+COLOR_HEX.update({"sky": "0EA5E9", "slate": "64748B", "violet": "A855F7", "lime": "65A30D"})
+DARK_HEX = {"green": "#166534", "blue": "#1E40AF", "orange": "#9A3412", "amber": "#854D0E", "pink": "#9D174D", "red": "#991B1B",
+            "grey": "#374151", "purple": "#5B21B6", "teal": "#115E59", "cyan": "#155E75", "indigo": "#3730A3", "sky": "#075985",
+            "slate": "#334155", "violet": "#6B21A8", "lime": "#3F6212"}
+
+
+def _hex(tone: str) -> colors.Color:
+    return colors.HexColor("#" + COLOR_HEX.get(tone, "6B7280"))
+
+
+def _dark(tone: str) -> str:
+    return DARK_HEX.get(tone, "#374151")
+
+
+def _tint(c: colors.Color) -> colors.Color:
+    return colors.Color(1 - (1 - c.red) * 0.16, 1 - (1 - c.green) * 0.16, 1 - (1 - c.blue) * 0.16)
+
+
+def _esc(v: str) -> str:
+    return v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _bar(frac: float, width: float, color: colors.Color) -> Drawing:
+    d = Drawing(width, 6)
+    d.add(Rect(0, 0, width, 6, fillColor=LIGHT, strokeColor=None, rx=1.5, ry=1.5))
+    d.add(Rect(0, 0, max(1.5, width * max(0.0, min(1.0, frac))), 6, fillColor=color, strokeColor=None, rx=1.5, ry=1.5))
+    return d
 
 REPORT_TYPES = {
     "employee": "Individual Employee Report",
@@ -141,154 +173,371 @@ class ReportService:
                 "period": ov["period"], "filters": ov["filters"], "generated_at": datetime.now().strftime("%d %b %Y %H:%M")}
 
     # ------------------------------------------------------------------ PDF
+    PAGE_W = landscape(A4)[0] - 28 * mm  # printable width
+
+    def _styles(self) -> Dict[str, ParagraphStyle]:
+        ss = getSampleStyleSheet()
+        body = ParagraphStyle("body", parent=ss["BodyText"], fontSize=8.5, leading=11.5, textColor=colors.HexColor("#0F172A"))
+        cell = ParagraphStyle("cell", parent=body, fontSize=7.4, leading=9.2)
+        return {
+            "title": ParagraphStyle("title", parent=ss["Title"], fontSize=19, leading=23, textColor=colors.white, alignment=TA_LEFT, spaceAfter=0),
+            "subtitle": ParagraphStyle("subtitle", parent=body, fontSize=8.5, leading=11, textColor=colors.HexColor("#CBD5E1")),
+            "h2": ParagraphStyle("h2", parent=ss["Heading2"], fontSize=11.5, leading=14, textColor=NAVY, spaceBefore=0, spaceAfter=0),
+            "h2sub": ParagraphStyle("h2sub", parent=body, fontSize=7.5, leading=9.5, textColor=MUTED),
+            "body": body,
+            "small": ParagraphStyle("small", parent=body, fontSize=7.5, leading=9.5, textColor=MUTED),
+            "cell": cell,
+            "cell_r": ParagraphStyle("cell_r", parent=cell, alignment=TA_RIGHT),
+            "cell_b": ParagraphStyle("cell_b", parent=cell, fontName="Helvetica-Bold"),
+            "head": ParagraphStyle("head", parent=cell, textColor=colors.white, fontName="Helvetica-Bold", fontSize=7),
+            "head_r": ParagraphStyle("head_r", parent=cell, textColor=colors.white, fontName="Helvetica-Bold", fontSize=7, alignment=TA_RIGHT),
+            "kpi_label": ParagraphStyle("kpi_label", parent=body, fontSize=6.8, leading=8.5, textColor=MUTED),
+            "kpi_value": ParagraphStyle("kpi_value", parent=body, fontSize=14, leading=16, fontName="Helvetica-Bold", textColor=NAVY),
+        }
+
     def _build_pdf(self, report_type: str, data: Dict[str, Any], target: Optional[str]) -> bytes:
         buf = io.BytesIO()
+        title = REPORT_TYPES[report_type] + (f" - {target}" if target else "")
+        self._doc_title = title
         doc = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=14 * mm, rightMargin=14 * mm,
-                                topMargin=14 * mm, bottomMargin=14 * mm,
-                                title=REPORT_TYPES[report_type], author=self.settings.app_name)
-        ss = getSampleStyleSheet()
-        h1 = ParagraphStyle("h1", parent=ss["Title"], fontSize=18, textColor=NAVY, alignment=TA_LEFT, spaceAfter=4)
-        h2 = ParagraphStyle("h2", parent=ss["Heading2"], fontSize=12.5, textColor=NAVY, spaceBefore=8, spaceAfter=4)
-        body = ParagraphStyle("body", parent=ss["BodyText"], fontSize=8.5, leading=11)
-        small = ParagraphStyle("small", parent=body, fontSize=7.5, textColor=colors.HexColor("#475569"))
-        cell = ParagraphStyle("cell", parent=body, fontSize=7.2, leading=8.8)
-        head = ParagraphStyle("head", parent=cell, textColor=colors.white, fontName="Helvetica-Bold")
-        self._head_style = head
-
+                                topMargin=14 * mm, bottomMargin=14 * mm, title=title, author=self.settings.app_name)
+        st = self._styles()
+        self._st = st
         ov = data["overview"]
         k = ov["kpis"]
         story: List[Any] = []
-        title = REPORT_TYPES[report_type] + (f" — {target}" if target else "")
-        story.append(Paragraph(title, h1))
-        story.append(Paragraph(f"Reporting period: <b>{data['period']['label']}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-                               f"Reports in period: {data['period']['report_count']} &nbsp;&nbsp;|&nbsp;&nbsp; "
-                               f"Generated: {data['generated_at']} &nbsp;&nbsp;|&nbsp;&nbsp; {self.settings.app_name}", small))
+
+        # -- title band
         chips = ov["filters"]
-        active = [f"{key}: {', '.join(v)}" for key, v in chips.items()
-                  if isinstance(v, list) and v and key not in ("label",)]
+        active = [f"{key.replace('_', ' ').title()}: {', '.join(v)}" for key, v in chips.items() if isinstance(v, list) and v and key != "label"]
         if chips.get("search"):
-            active.append(f"search: {chips['search']}")
+            active.append(f"Search: {chips['search']}")
+        sub = (f"Reporting period <b>{data['period']['label']}</b> &nbsp;|&nbsp; {data['period']['report_count']} report dates &nbsp;|&nbsp; "
+               f"Generated {data['generated_at']} &nbsp;|&nbsp; {self.settings.app_name}")
+        band_rows = [[Paragraph(title, st["title"])], [Paragraph(sub, st["subtitle"])]]
         if active:
-            story.append(Paragraph("Active filters: " + " · ".join(active), small))
-        story.append(Spacer(1, 6))
+            band_rows.append([Paragraph("Filters applied: " + " &nbsp;&middot;&nbsp; ".join(active), st["subtitle"])])
+        band = Table(band_rows, colWidths=[self.PAGE_W])
+        band.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY), ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                                  ("RIGHTPADDING", (0, 0), (-1, -1), 10), ("TOPPADDING", (0, 0), (-1, 0), 9),
+                                  ("BOTTOMPADDING", (0, -1), (-1, -1), 9), ("TOPPADDING", (0, 1), (-1, -1), 1),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -2), 1), ("ROUNDEDCORNERS", [6, 6, 6, 6])]))
+        story.append(band)
+        story.append(Spacer(1, 8))
 
         if report_type == "employee" and ov["employees"]:
             e = ov["employees"][0]
-            story.append(Paragraph("Employee details", h2))
+            story.append(self._section("Employee details"))
             story.append(self._kv_table([
-                ("Employee", e["employee"]), ("Project / Team", e["project"]), ("Application(s)", e["application"]),
-                ("Jira Board", e["jira_board"]), ("Team Lead", e["team_lead"]), ("Reports in period", e["reports"]),
-                ("Last report date", e["last_report_date"]),
-            ], cell))
+                ("Employee", e["employee"]), ("Project / team", e["project"]), ("Jira board", e["jira_board"]),
+                ("Team lead", e["team_lead"]), ("Report dates in period", e["reports"]), ("Last report date", e["last_report_date"]),
+            ]))
+            story.append(Spacer(1, 6))
 
-        story.append(Paragraph("KPI summary", h2))
-        story.append(self._kpi_grid([
-            ("Activities", k["total_activities"]), ("Unique tickets", k["total_tickets"]),
-            ("Completed", k["completed_tickets"]), ("In progress", k["in_progress_tickets"]),
-            ("Pending", k["pending_tickets"]), ("Blocked", k["blocked_tickets"]),
-            ("Analysis", k["analysis_tickets"]), ("Other / unmapped", k["other_status_tickets"]),
-            ("Dev deployed", k["dev_deployed"]), ("Dev pending", k["dev_pending"]),
-            ("Prod releases", k["production_releases"]), ("Prod deployed", k["production_released"]),
+        story.append(self._section("Key figures", "Unique tickets by latest status, plus deployment and release counts for the period."))
+        story.append(self._kpi_tiles([
+            ("Tickets worked on", k["total_tickets"], "slate"), ("Completed", k["completed_tickets"], "green"),
+            ("In progress", k["in_progress_tickets"], "blue"), ("Pending", k["pending_tickets"], "orange"),
+            ("Blocked", k["blocked_tickets"], "red"), ("Analysis", k["analysis_tickets"], "sky"),
+            ("Dev deployed", k["dev_deployed"], "teal"), ("Dev pending", k["dev_pending"], "orange"),
+            ("Production releases", k["production_releases"], "purple"), ("Deployed to production", k["production_released"], "green"),
+            ("Production pending", k["production_pending"], "orange"), ("Active people", k["active_employees"], "slate"),
         ]))
+        story.append(Spacer(1, 8))
 
-        story.append(Paragraph("Jira status distribution (unique tickets)", h2))
-        story.append(self._dist_table(ov["charts"]["ticket_status"], cell))
-        story.append(Paragraph("Work type distribution (activities)", h2))
-        story.append(self._dist_table(ov["charts"]["work_type"], cell))
-        story.append(Paragraph("Dev deployment summary (activities)", h2))
-        story.append(self._dist_table(ov["charts"]["dev_deployment"], cell))
-        story.append(Paragraph("Production deployment summary (release records)", h2))
-        story.append(self._dist_table(ov["charts"]["prod_deployment"], cell))
+        story.append(self._section("Distribution", "Share of tickets, work rows and deployment records by category."))
+        story.append(self._quad([
+            self._dist_table("Ticket status", ov["charts"]["ticket_status"]),
+            self._dist_table("Work type", ov["charts"]["work_type"]),
+            self._dist_table("Dev deployment", ov["charts"]["dev_deployment"]),
+            self._dist_table("Production deployment", ov["charts"]["prod_deployment"]),
+        ]))
 
         if report_type in ("management", "team", "all_employees", "project", "application", "jira_board", "jira_status"):
             story.append(PageBreak())
-            story.append(Paragraph("Employee-wise performance", h2))
+            story.append(self._section("Employee-wise performance", "One row per person. Counts are unique tickets by latest status; red cells mark blocked work."))
             story.append(self._grid(
-                ["Employee", "Project", "Activities", "Tickets", "Completed", "In Prog.", "Pending", "Blocked", "Analysis", "Dev", "Test", "Dev Deployed", "Prod Rel."],
-                [[e["employee"], e["project"], e["total_activities"], e["unique_tickets"], e["completed"], e["in_progress"],
-                  e["pending"], e["blocked"], e["analysis"], e["development"], e["testing"], e["dev_deployed"], e["production_releases"]]
-                 for e in ov["employees"]], cell, widths=[38, 40, 16, 14, 16, 14, 14, 14, 14, 12, 12, 18, 14]))
-            story.append(Paragraph("Project-wise performance", h2))
+                ["Employee", "Project", "Assigned", "Completed", "In progress", "Pending", "Blocked", "Analysis", "Dev deployed", "Prod releases", "Prod deployed", "Completion"],
+                [[e["employee"], e["project"], e["unique_tickets"], e["completed"], e["in_progress"], e["pending"], e["blocked"], e["analysis"],
+                  e["dev_deployed"], e["production_releases"], e["production_released"],
+                  (f"{100 * e['completed'] / e['unique_tickets']:.0f}%" if e["unique_tickets"] else "-")]
+                 for e in sorted(ov["employees"], key=lambda x: -x["unique_tickets"])],
+                widths=[40, 36, 14, 16, 16, 14, 14, 14, 16, 16, 16, 16], highlight={6: "red", 3: "green"}))
+            story.append(Spacer(1, 8))
+            story.append(self._section("Project-wise performance", "One row per project across the selected people."))
             story.append(self._grid(
-                ["Project", "Employees", "Activities", "Tickets", "Completed", "In Prog.", "Pending", "Blocked", "Backlog", "Dev Deployed", "Prod Rel.", "Prod Deployed"],
-                [[p["project"], p["employees"], p["total_activities"], p["unique_tickets"], p["completed"], p["in_progress"],
-                  p["pending"], p["blocked"], p["backlog"], p["dev_deployed"], p["production_releases"], p["production_released"]]
-                 for p in ov["projects"]], cell))
+                ["Project", "People", "Assigned", "Completed", "In progress", "Pending", "Blocked", "Backlog", "Dev deployed", "Prod releases", "Prod deployed", "Completion"],
+                [[p["project"], p["employees"], p["unique_tickets"], p["completed"], p["in_progress"], p["pending"], p["blocked"], p["backlog"],
+                  p["dev_deployed"], p["production_releases"], p["production_released"],
+                  (f"{100 * p['completed'] / p['unique_tickets']:.0f}%" if p["unique_tickets"] else "-")]
+                 for p in sorted(ov["projects"], key=lambda x: -x["unique_tickets"])],
+                widths=[46, 14, 14, 16, 16, 14, 14, 14, 16, 16, 16, 16], highlight={6: "red", 3: "green"}))
 
-        if report_type in ("management", "team"):
-            story.append(Paragraph("Management insights", h2))
-            for ins in ov["insights"]:
-                story.append(Paragraph(f"• <b>{ins['title']}</b> — {ins['detail']}", body))
+        if report_type in ("management", "team") and ov["insights"]:
+            story.append(Spacer(1, 8))
+            story.append(self._section("Observations", "Rule-based findings for the selected period."))
+            story.append(self._insights(ov["insights"]))
 
         if report_type in ("employee", "all_employees", "team", "management", "project", "application", "jira_board", "jira_status"):
             story.append(PageBreak())
-            story.append(Paragraph("Jira tickets (latest status per ticket)", h2))
+            story.append(self._section(f"Jira tickets ({len(data['tickets'])})", "Latest status per ticket within the period."))
             story.append(self._grid(
-                ["Ticket", "Status", "Type", "Employee", "Project", "Application", "Dev Deploy", "Prod Deploy", "Last seen", "Summary"],
-                [[t["ticket_id"], t["work_status_raw"] or _lbl("work_status", t["work_status"]), t["work_type_raw"] or "",
-                  t["employee"], t["project"], t["application"], t["dev_deployment_raw"] or "", t["prod_deployment_raw"] or "",
-                  t["last_seen"], (t["work_details"] or "")[:110]] for t in data["tickets"]], cell,
-                widths=[22, 20, 20, 32, 30, 28, 20, 20, 18, 60]))
+                ["Ticket", "Status", "Type", "Employee", "Project", "Dev deploy", "Prod deploy", "Last seen", "Summary"],
+                [[t["ticket_id"], t["work_status"], t["work_type"], t["employee"], t["project"], t["dev_deployment"], t["prod_deployment"] if t.get("has_release", True) else "",
+                  t["last_seen"], (t["work_details"] or "")[:120]] for t in data["tickets"]],
+                widths=[22, 24, 20, 34, 30, 22, 22, 18, 78],
+                status_cols={1: "work_status", 2: "work_type", 5: "dev_deployment", 6: "prod_deployment"}))
 
         if report_type in ("dev_deployment", "management", "employee", "project"):
             story.append(PageBreak())
-            story.append(Paragraph("Dev deployment detail", h2))
+            story.append(self._section(f"Dev deployment detail ({len(data['activities'])})", "One row per work item reported in the period."))
             story.append(self._grid(
-                ["Date", "Employee", "Project", "Application", "Ticket", "Work status", "Dev deployment", "Prod required"],
-                [[a["report_date"], a["employee"], a["project"], a["application"], a["ticket_id"] or a["ticket_raw"],
-                  a["work_status_raw"], a["dev_deployment_raw"], a["prod_required_raw"]] for a in data["activities"]], cell))
+                ["Date", "Employee", "Project", "Ticket", "Type", "Work status", "Dev deployment"],
+                [[a["report_date"], a["employee"], a["project"], a["ticket_id"] or a["ticket_raw"], a["work_type"], a["work_status"], a["dev_deployment"]]
+                 for a in data["activities"]], widths=[20, 36, 34, 24, 22, 26, 26],
+                status_cols={4: "work_type", 5: "work_status", 6: "dev_deployment"}, max_rows=600))
 
         if report_type in ("prod_deployment", "management", "employee", "project", "team"):
-            story.append(Paragraph("Production releases", h2))
+            story.append(PageBreak() if report_type == "prod_deployment" else Spacer(1, 8))
+            story.append(self._section(f"Production releases ({len(data['releases'])})", "Release records dated inside the period."))
             story.append(self._grid(
-                ["Release date", "Employee", "Project", "Application", "Ticket(s)", "Status", "Details"],
-                [[r["release_date"], r["employee"], r["project"], r["application"], r["ticket_raw"], r["prod_deployment_raw"],
-                  (r["release_details"] or "")[:120]] for r in data["releases"]], cell, widths=[20, 34, 34, 30, 26, 20, 90]))
+                ["Release date", "Employee", "Project", "Ticket(s)", "Status", "Release details", "Comments"],
+                [[r["release_date"], r["employee"], r["project"], r["ticket_raw"], r["prod_deployment"], (r["release_details"] or "")[:140], (r["comments"] or "")[:80]]
+                 for r in data["releases"]], widths=[20, 34, 30, 28, 22, 90, 50], status_cols={4: "prod_deployment"}))
 
         if report_type in ("employee", "all_employees", "management", "team", "project"):
             story.append(PageBreak())
-            story.append(Paragraph("Detailed activity records", h2))
+            story.append(self._section(f"Work items ({len(data['activities'])})", "Every work row reported in the period, traceable to its source."))
             story.append(self._grid(
-                ["Date", "Employee", "Project", "Application", "Ticket", "Type", "Status", "Dev Deploy", "Work details", "Comments"],
-                [[a["report_date"], a["employee"], a["project"], a["application"], a["ticket_id"] or a["ticket_raw"] or "",
-                  a["work_type_raw"], a["work_status_raw"], a["dev_deployment_raw"], (a["work_details"] or "")[:120],
-                  (a["comments"] or "")[:100]] for a in data["activities"]], cell,
-                widths=[18, 30, 28, 26, 20, 18, 18, 18, 60, 48]))
+                ["Date", "Employee", "Project", "Ticket", "Type", "Status", "Dev deploy", "Work details", "Comments"],
+                [[a["report_date"], a["employee"], a["project"], a["ticket_id"] or a["ticket_raw"] or "", a["work_type"], a["work_status"],
+                  a["dev_deployment"], (a["work_details"] or "")[:130], (a["comments"] or "")[:90]] for a in data["activities"]],
+                widths=[18, 30, 28, 20, 20, 22, 22, 72, 44], status_cols={4: "work_type", 5: "work_status", 6: "dev_deployment"}, max_rows=600))
             notes = self._notes_for(ov, data)
             if notes:
-                story.append(Paragraph("Additional work notes", h2))
+                story.append(Spacer(1, 8))
+                story.append(self._section("Additional work notes"))
                 for who, text in notes:
-                    story.append(Paragraph(f"<b>{who}:</b> {text}", body))
+                    story.append(Paragraph(f"<b>{who}:</b> {text}", st["body"]))
 
         if report_type == "management":
             story.append(PageBreak())
-            story.append(Paragraph("Data quality observations", h2))
-            s = data["quality"]["summary"]
-            story.append(self._kpi_grid([
-                ("Issues", s["total_issues"]), ("Errors", s["errors"]), ("Warnings", s["warnings"]),
-                ("Missing employee", s["missing_employee"]), ("Missing ticket id", s["missing_ticket"]),
-                ("Missing status", s["missing_status"]), ("Invalid dates", s["invalid_dates"]),
-                ("Duplicates", s["duplicates"]), ("Incomplete deployment", s["incomplete_deployment"]),
-                ("Unmapped statuses", s["unmapped_statuses"]),
+            story.append(self._section("Data quality", "Issues found while reading the source data."))
+            q = data["quality"]["summary"]
+            story.append(self._kpi_tiles([
+                ("Issues", q["total_issues"], "slate"), ("Errors", q["errors"], "red"), ("Warnings", q["warnings"], "orange"),
+                ("Missing employee", q["missing_employee"], "orange"), ("Missing ticket id", q["missing_ticket"], "orange"),
+                ("Missing status", q["missing_status"], "orange"), ("Invalid dates", q["invalid_dates"], "red"),
+                ("Duplicates", q["duplicates"], "amber"), ("Incomplete deployment", q["incomplete_deployment"], "amber"),
+                ("Unmapped statuses", q["unmapped_statuses"], "purple"),
             ]))
+            story.append(Spacer(1, 6))
             story.append(self._grid(["Severity", "Category", "File", "Row", "Message"],
-                                    [[i["severity"], i["category"], i["file_name"], i["row"], i["message"]]
-                                     for i in data["quality"]["issues"][:300]], cell, widths=[16, 30, 70, 10, 140]))
+                                    [[i["severity"], i["category"], i["file_name"], i["row"], i["message"]] for i in data["quality"]["issues"][:300]],
+                                    widths=[16, 30, 70, 10, 140]))
 
-        story.append(Spacer(1, 8))
-        story.append(Paragraph("Calculation rules", h2))
+        story.append(Spacer(1, 10))
+        story.append(self._section("How the numbers are calculated"))
         for rule in ov["calculation_rules"]:
-            story.append(Paragraph("• " + rule.replace("*", ""), small))
-        doc.build(story, onFirstPage=self._footer, onLaterPages=self._footer)
+            story.append(Paragraph("&bull; " + rule.replace("*", ""), st["small"]))
+        doc.build(story, onFirstPage=self._footer, onLaterPages=self._page_chrome)
         return buf.getvalue()
 
+    # -- chrome
     def _footer(self, canvas: Any, doc: Any) -> None:
         canvas.saveState()
         canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(colors.HexColor("#64748B"))
-        canvas.drawString(14 * mm, 8 * mm, f"{self.settings.app_name} · generated {datetime.now():%d %b %Y %H:%M}")
+        canvas.setFillColor(MUTED)
+        canvas.drawString(14 * mm, 8 * mm, f"{self.settings.app_name}  |  generated {datetime.now():%d %b %Y %H:%M}  |  confidential")
         canvas.drawRightString(landscape(A4)[0] - 14 * mm, 8 * mm, f"Page {doc.page}")
         canvas.restoreState()
+
+    def _page_chrome(self, canvas: Any, doc: Any) -> None:
+        self._footer(canvas, doc)
+        canvas.saveState()
+        w, h = landscape(A4)
+        canvas.setFont("Helvetica-Bold", 7.5)
+        canvas.setFillColor(NAVY)
+        canvas.drawString(14 * mm, h - 9 * mm, getattr(self, "_doc_title", ""))
+        canvas.setStrokeColor(BORDER)
+        canvas.setLineWidth(0.4)
+        canvas.line(14 * mm, h - 10.5 * mm, w - 14 * mm, h - 10.5 * mm)
+        canvas.restoreState()
+
+    # -- building blocks
+    def _section(self, title: str, subtitle: Optional[str] = None) -> Table:
+        st = self._st
+        rows = [["", Paragraph(title, st["h2"])]]
+        if subtitle:
+            rows.append(["", Paragraph(subtitle, st["h2sub"])])
+        t = Table(rows, colWidths=[1.6 * mm, self.PAGE_W - 1.6 * mm])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (0, -1), ACCENT), ("LEFTPADDING", (1, 0), (1, -1), 6),
+                               ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                               ("BOTTOMPADDING", (0, -1), (-1, -1), 5), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        return t
+
+    def _kv_table(self, pairs: Sequence[tuple]) -> Table:
+        st = self._st
+        half = (len(pairs) + 1) // 2
+        left, right = pairs[:half], pairs[half:]
+        rows = []
+        for i in range(half):
+            lk, lv = left[i]
+            rk, rv = right[i] if i < len(right) else ("", "")
+            rows.append([Paragraph(lk, st["small"]), Paragraph(_fmt(lv) or "-", st["cell_b"]), Paragraph(rk, st["small"]), Paragraph(_fmt(rv) or "-", st["cell_b"])])
+        w = self.PAGE_W
+        t = Table(rows, colWidths=[w * 0.14, w * 0.36, w * 0.14, w * 0.36])
+        t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.4, BORDER), ("LINEBELOW", (0, 0), (-1, -2), 0.25, BORDER),
+                               ("BACKGROUND", (0, 0), (0, -1), LIGHT), ("BACKGROUND", (2, 0), (2, -1), LIGHT),
+                               ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        return t
+
+    def _kpi_tiles(self, items: Sequence[tuple]) -> Table:
+        st = self._st
+        per_row, gap = 6, 3 * mm
+        tile_w = (self.PAGE_W - gap * (per_row - 1)) / per_row
+        rows: List[List[Any]] = []
+        heights: List[float] = []
+        styles: List[tuple] = []
+        chunks = [items[i:i + per_row] for i in range(0, len(items), per_row)]
+        for ci, chunk in enumerate(chunks):
+            r = len(rows)
+            row: List[Any] = []
+            for c in range(per_row):
+                col = c * 2
+                if c < len(chunk):
+                    label, value, tone = chunk[c]
+                    row.append([Paragraph(label, st["kpi_label"]), Paragraph(_fmt(value) or "0", st["kpi_value"])])
+                    styles += [("BOX", (col, r), (col, r), 0.4, BORDER), ("BACKGROUND", (col, r), (col, r), colors.white),
+                               ("LINEBEFORE", (col, r), (col, r), 2.2, _hex(tone))]
+                else:
+                    row.append("")
+                if c < per_row - 1:
+                    row.append("")
+            rows.append(row)
+            heights.append(15 * mm)
+            if ci < len(chunks) - 1:
+                rows.append([""] * (per_row * 2 - 1))
+                heights.append(gap)
+        widths = []
+        for c in range(per_row):
+            widths.append(tile_w)
+            if c < per_row - 1:
+                widths.append(gap)
+        t = Table(rows, colWidths=widths, rowHeights=heights)
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 0)] + styles))
+        return t
+
+    def _quad(self, cells: Sequence[Any]) -> Table:
+        gap = 3 * mm
+        w = (self.PAGE_W - gap * 3) / 4
+        row: List[Any] = []
+        widths: List[float] = []
+        for i, c in enumerate(cells):
+            row.append(c)
+            widths.append(w)
+            if i < 3:
+                row.append("")
+                widths.append(gap)
+        t = Table([row], colWidths=widths)
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                               ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        return t
+
+    def _pair(self, left: Any, right: Any) -> Table:
+        half = (self.PAGE_W - 4 * mm) / 2
+        t = Table([[left, "", right]], colWidths=[half, 4 * mm, half])
+        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                               ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+        return t
+
+    def _dist_table(self, title: str, series: List[Dict[str, Any]]) -> Any:
+        st = self._st
+        items = [s for s in series if s["value"]]
+        width = (self.PAGE_W - 9 * mm) / 4
+        header = [Paragraph(title, st["head"]), "", Paragraph("#", st["head_r"]), Paragraph("%", st["head_r"]), Paragraph("", st["head"])]
+        if not items:
+            rows = [header, ["", Paragraph("No records", st["small"]), "", "", ""]]
+        else:
+            total = sum(s["value"] for s in items)
+            mx = max(s["value"] for s in items)
+            bar_w = width * 0.28 - 6
+            rows = [header]
+            for s in items:
+                rows.append(["", Paragraph(s["label"], st["cell"]), Paragraph(str(s["value"]), st["cell_r"]),
+                             Paragraph(f"{100 * s['value'] / total:.0f}", st["cell_r"]), _bar(s["value"] / mx, bar_w, _hex(s["color"]))])
+        t = Table(rows, colWidths=[2.2 * mm, width * 0.46 - 2.2 * mm, width * 0.13, width * 0.13, width * 0.28])
+        ts = [("BACKGROUND", (0, 0), (-1, 0), NAVY), ("SPAN", (0, 0), (1, 0)), ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+              ("LINEBELOW", (0, 1), (-1, -2), 0.25, BORDER), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+              ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (0, -1), 0), ("RIGHTPADDING", (0, 0), (0, -1), 0)]
+        for i, s in enumerate(items, start=1):
+            ts.append(("BACKGROUND", (0, i), (0, i), _hex(s["color"])))
+        t.setStyle(TableStyle(ts))
+        return t
+
+    def _insights(self, insights: List[Dict[str, Any]]) -> Table:
+        st = self._st
+        tone = {"success": "green", "info": "blue", "warning": "orange", "danger": "red"}
+        rows, ts = [], [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, -2), 0.25, BORDER), ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4), ("LEFTPADDING", (0, 0), (0, -1), 0), ("RIGHTPADDING", (0, 0), (0, -1), 0)]
+        for i, ins in enumerate(insights[:14]):
+            val = f" &nbsp;<font color='#64748B'>({_fmt(ins['value'])})</font>" if ins.get("value") not in (None, "") else ""
+            rows.append(["", Paragraph(f"<b>{ins['title']}</b>{val}<br/>{ins['detail']}", st["cell"])])
+            ts.append(("BACKGROUND", (0, i), (0, i), _hex(tone.get(ins["type"], "slate"))))
+        t = Table(rows, colWidths=[2.2 * mm, self.PAGE_W - 2.2 * mm])
+        t.setStyle(TableStyle(ts))
+        return t
+
+    def _grid(self, headers: Sequence[str], rows: Sequence[Sequence[Any]], widths: Optional[Sequence[float]] = None,
+              status_cols: Optional[Dict[int, str]] = None, highlight: Optional[Dict[int, str]] = None, max_rows: Optional[int] = None) -> Any:
+        st = self._st
+        if not rows:
+            return Paragraph("<i>No records for the selected period and filters.</i>", st["small"])
+        status_cols = status_cols or {}
+        highlight = highlight or {}
+        shown = list(rows[:max_rows]) if max_rows else list(rows)
+        ncols = len(headers)
+        numeric = [all(isinstance(r[c], (int, float)) and not isinstance(r[c], bool) or r[c] in (None, "") for r in shown) and any(isinstance(r[c], (int, float)) for r in shown)
+                   or (c not in status_cols and all(isinstance(r[c], str) and r[c].endswith("%") or r[c] in ("-", None, "") for r in shown) and any(isinstance(r[c], str) and r[c].endswith("%") for r in shown))
+                   for c in range(ncols)]
+        data = [[Paragraph(str(h), st["head_r"] if numeric[c] else st["head"]) for c, h in enumerate(headers)]]
+        ts: List[tuple] = [
+            ("BACKGROUND", (0, 0), (-1, 0), NAVY), ("LINEBELOW", (0, 0), (-1, -1), 0.25, BORDER), ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ZEBRA]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4), ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]
+        for ri, r in enumerate(shown, start=1):
+            cells = []
+            for c, v in enumerate(r):
+                if c in status_cols:
+                    dim = status_cols[c]
+                    meta = CATEGORY_META[dim].get(str(v)) if v else None
+                    label = meta["label"] if meta else (_fmt(v) or "-")
+                    color = _hex(meta["color"]) if meta else None
+                    if color is not None and v:
+                        ts.append(("BACKGROUND", (c, ri), (c, ri), _tint(color)))
+                        cells.append(Paragraph(f"<font color='{_dark(meta['color'])}'><b>{_esc(label)}</b></font>", st["cell"]))
+                    else:
+                        cells.append(Paragraph(_esc(label), st["cell"]))
+                    continue
+                text = _esc(_fmt(v))
+                if c in highlight and isinstance(v, (int, float)) and v > 0:
+                    ts.append(("BACKGROUND", (c, ri), (c, ri), _tint(_hex(highlight[c]))))
+                    cells.append(Paragraph(f"<font color='{_dark(highlight[c])}'><b>{text}</b></font>", st["cell_r"]))
+                else:
+                    cells.append(Paragraph(text if text else "<font color='#CBD5E1'>-</font>", st["cell_r"] if numeric[c] else st["cell"]))
+            data.append(cells)
+        if widths:
+            s = sum(widths)
+            col_w = [w / s * self.PAGE_W for w in widths]
+        else:
+            col_w = [self.PAGE_W / ncols] * ncols
+        t = Table(data, colWidths=col_w, repeatRows=1)
+        t.setStyle(TableStyle(ts))
+        if max_rows and len(rows) > max_rows:
+            return KeepTogether([t, Spacer(1, 3), Paragraph(f"Showing the first {max_rows} of {len(rows)} rows. Use the Excel or CSV export for the full list.", st["small"])])
+        return t
 
     def _notes_for(self, ov: Dict[str, Any], data: Dict[str, Any]) -> List[tuple]:
         from app.services.filter_service import apply_report_filters
@@ -300,63 +549,6 @@ class ReportService:
                 out.append((f"{r['employee']} ({r['report_date'].date().isoformat() if r['report_date'] == r['report_date'] else '-'})", n))
         return out
 
-    def _kv_table(self, pairs: Sequence[tuple], style: ParagraphStyle) -> Table:
-        rows = [[Paragraph(f"<b>{k}</b>", style), Paragraph(_fmt(v), style)] for k, v in pairs]
-        t = Table(rows, colWidths=[40 * mm, 200 * mm])
-        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.3, BORDER), ("BACKGROUND", (0, 0), (0, -1), LIGHT),
-                               ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-        return t
-
-    def _kpi_grid(self, items: Sequence[tuple]) -> Table:
-        per_row = 6
-        rows: List[List[Any]] = []
-        for i in range(0, len(items), per_row):
-            chunk = items[i:i + per_row]
-            rows.append([Paragraph(f"<font size=7 color='#64748B'>{k}</font><br/><font size=13><b>{_fmt(v)}</b></font>",
-                                   getSampleStyleSheet()["BodyText"]) for k, v in chunk] + [""] * (per_row - len(chunk)))
-        t = Table(rows, colWidths=[45 * mm] * per_row, rowHeights=14 * mm)
-        t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.3, BORDER), ("INNERGRID", (0, 0), (-1, -1), 0.3, BORDER),
-                               ("BACKGROUND", (0, 0), (-1, -1), LIGHT), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 6)]))
-        return t
-
-    def _dist_table(self, series: List[Dict[str, Any]], style: ParagraphStyle) -> Table:
-        total = sum(s["value"] for s in series) or 1
-        hs = getattr(self, "_head_style", style)
-        header = [Paragraph("Category", hs), Paragraph("Count", hs), Paragraph("Share", hs)]
-        rows = [header] + [[Paragraph(s["label"], style), Paragraph(str(s["value"]), style),
-                            Paragraph(f"{100 * s['value'] / total:.0f}%", style)] for s in series if s["value"]]
-        t = Table(rows, colWidths=[70 * mm, 25 * mm, 25 * mm])
-        ts = [("GRID", (0, 0), (-1, -1), 0.3, BORDER), ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-              ("TEXTCOLOR", (0, 0), (-1, 0), colors.white)]
-        for i, s in enumerate([s for s in series if s["value"]], start=1):
-            ts.append(("LINEBEFORE", (0, i), (0, i), 3, colors.HexColor("#" + COLOR_HEX.get(s["color"], "6B7280"))))
-        t.setStyle(TableStyle(ts))
-        return t
-
-    def _grid(self, headers: Sequence[str], rows: Sequence[Sequence[Any]], style: ParagraphStyle,
-              widths: Optional[Sequence[float]] = None) -> Any:
-        if not rows:
-            return Paragraph("<i>No records for the selected period / filters.</i>", style)
-        hs = getattr(self, "_head_style", style)
-        data = [[Paragraph(str(h), hs) for h in headers]]
-        for r in rows:
-            data.append([Paragraph(_fmt(v).replace("&", "&amp;").replace("<", "&lt;"), style) for v in r])
-        total_w = 269 * mm
-        if widths:
-            s = sum(widths)
-            col_w = [w / s * total_w for w in widths]
-        else:
-            col_w = [total_w / len(headers)] * len(headers)
-        t = Table(data, colWidths=col_w, repeatRows=1)
-        t.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.25, BORDER), ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        return t
-
     # ------------------------------------------------------------------ Excel
     def _build_xlsx(self, report_type: str, data: Dict[str, Any], target: Optional[str]) -> bytes:
         wb = Workbook()
@@ -367,13 +559,13 @@ class ReportService:
         self._title(ws, REPORT_TYPES[report_type] + (f" — {target}" if target else ""), data)
         kpi_rows = [
             ("Total employees (all data)", k["total_employees"]), ("Active employees in period", k["active_employees"]),
-            ("Reports in period", k["total_reports"]), ("Total activities", k["total_activities"]),
+            ("Report dates in period", k["total_reports"]), ("Work rows", k["total_activities"]),
             ("Unique Jira tickets", k["total_tickets"]), ("Completed tickets", k["completed_tickets"]),
             ("In progress tickets", k["in_progress_tickets"]), ("Pending tickets", k["pending_tickets"]),
             ("Blocked tickets", k["blocked_tickets"]), ("Analysis tickets", k["analysis_tickets"]),
             ("Other / unmapped tickets", k["other_status_tickets"]),
-            ("Development activities", k["development_activities"]), ("Analysis activities", k["analysis_activities"]),
-            ("Testing activities", k["testing_activities"]), ("Dev deployed", k["dev_deployed"]),
+            ("Development work rows", k["development_activities"]), ("Analysis work rows", k["analysis_activities"]),
+            ("Testing work rows", k["testing_activities"]), ("Dev deployed", k["dev_deployed"]),
             ("Dev pending", k["dev_pending"]), ("Production release records", k["production_releases"]),
             ("Production deployed", k["production_released"]), ("Production pending", k["production_pending"]),
             ("Production blocked / failed", k["production_blocked"]),
@@ -403,7 +595,7 @@ class ReportService:
 
         self._sheet(wb, "Employee Summary", ov["employees"], [
             ("employee", "Employee"), ("project", "Project / Team"), ("application", "Application"), ("jira_board", "Jira Board"),
-            ("reports", "Reports"), ("total_activities", "Activities"), ("unique_tickets", "Unique Tickets"),
+            ("reports", "Report Dates"), ("total_activities", "Work Rows"), ("unique_tickets", "Assigned Tickets"),
             ("completed", "Completed"), ("in_progress", "In Progress"), ("pending", "Pending"), ("blocked", "Blocked"),
             ("analysis", "Analysis"), ("development", "Development"), ("testing", "Testing"),
             ("dev_deployed", "Dev Deployed"), ("dev_pending", "Dev Pending"), ("production_releases", "Prod Releases"),
@@ -411,7 +603,7 @@ class ReportService:
         ], conditional={"Blocked": "red", "Completed": "green"})
         self._sheet(wb, "Project Summary", ov["projects"], [
             ("project", "Project"), ("employees", "Employees"), ("applications", "Applications"), ("jira_boards", "Jira Boards"),
-            ("total_activities", "Activities"), ("unique_tickets", "Unique Tickets"), ("completed", "Completed"),
+            ("total_activities", "Work Rows"), ("unique_tickets", "Assigned Tickets"), ("completed", "Completed"),
             ("in_progress", "In Progress"), ("pending", "Pending"), ("blocked", "Blocked"), ("backlog", "Backlog"),
             ("analysis", "Analysis"), ("development", "Development"), ("testing", "Testing"), ("dev_deployed", "Dev Deployed"),
             ("production_releases", "Prod Releases"), ("production_released", "Prod Deployed"),
@@ -421,7 +613,7 @@ class ReportService:
             ("work_type_raw", "Work Type"), ("employee", "Employee(s)"), ("project", "Project"), ("application", "Application"),
             ("jira_board", "Jira Board"), ("dev_deployment_raw", "Dev Deployment"), ("prod_required_raw", "Prod Required?"),
             ("prod_deployment_raw", "Prod Deployment"), ("release_date", "Release Date"), ("first_seen", "First Seen"),
-            ("last_seen", "Last Seen"), ("activity_count", "Activity Rows"), ("status_changed", "Status Changed"),
+            ("last_seen", "Last Seen"), ("activity_count", "Work Rows"), ("status_changed", "Status Changed"),
             ("work_details", "Work Details"), ("ticket_link", "Link"),
         ], categorical="work_status")
         self._sheet(wb, "Development Deployment", data["activities"], [
@@ -435,7 +627,7 @@ class ReportService:
             ("prod_deployment_raw", "Production Status"), ("prod_deployment", "Category"), ("release_details", "Details"),
             ("comments", "Comments"), ("file_name", "Source File"), ("source_row", "Row"),
         ], categorical="prod_deployment")
-        self._sheet(wb, "Detailed Activities", data["activities"], [
+        self._sheet(wb, "Work Items", data["activities"], [
             ("report_date", "Report Date"), ("employee", "Employee"), ("project", "Project / Team"), ("application", "Application"),
             ("jira_board", "Jira Board"), ("ticket_id", "Jira Ticket ID"), ("ticket_raw", "Ticket (Excel)"),
             ("work_type_raw", "Work Type"), ("work_status_raw", "Work Status"), ("work_status", "Status Category"),
@@ -451,9 +643,15 @@ class ReportService:
         return out.getvalue()
 
     def _title(self, ws: Any, title: str, data: Dict[str, Any]) -> None:
-        ws.append([title]); ws.cell(1, 1).font = Font(bold=True, size=14, color="1E293B")
-        ws.append([f"Reporting period: {data['period']['label']}  |  Generated: {data['generated_at']}"])
-        ws.cell(2, 1).font = Font(italic=True, color="64748B")
+        ws.append([title]); ws.append([f"Reporting period: {data['period']['label']}  |  Generated: {data['generated_at']}  |  {self.settings.app_name}"])
+        for r, size, color, bold in ((1, 15, "FFFFFF", True), (2, 10, "CBD5E1", False)):
+            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
+            c = ws.cell(r, 1)
+            c.font = Font(bold=bold, size=size, color=color)
+            c.fill = PatternFill("solid", fgColor="1E293B")
+            c.alignment = Alignment(vertical="center", indent=1)
+        ws.row_dimensions[1].height = 26
+        ws.row_dimensions[2].height = 18
 
     def _style_header(self, ws: Any, row: int, ncols: int) -> None:
         fill = PatternFill("solid", fgColor="1E293B")
@@ -471,8 +669,16 @@ class ReportService:
         headers = [h for _, h in cols]
         ws.append(headers)
         self._style_header(ws, 1, len(headers))
-        for r in rows:
+        zebra = PatternFill("solid", fgColor="F8FAFC")
+        for i, r in enumerate(rows, start=2):
             ws.append([_fmt(r.get(key)) if isinstance(r.get(key), list) else r.get(key) for key, _ in cols])
+            for c in range(1, len(headers) + 1):
+                cell = ws.cell(i, c)
+                cell.alignment = Alignment(vertical="top", wrap_text=isinstance(cell.value, str) and len(cell.value) > 40,
+                                           horizontal="right" if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool) else "left")
+                if i % 2 == 0:
+                    cell.fill = zebra
+        ws.row_dimensions[1].height = 22
         ws.freeze_panes = "A2"
         if rows:
             ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(rows) + 1}"

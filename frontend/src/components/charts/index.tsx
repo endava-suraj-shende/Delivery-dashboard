@@ -156,7 +156,7 @@ function BarList({ rows, legend, onSelect, selected, valueLabel }: { rows: BarRo
   // 1-3 rows (e.g. a single-employee filter): expand each row into a panel with its breakdown, choosing the densest layout that fits the card.
   const segCount = rows.map((r) => r.segments.filter((sg) => sg.value > 0).length)
   if (rows.length <= 3 && segCount.some((n) => n > 1) && h > 0) {
-    const fitsVertical = rows.length * 58 + segCount.reduce((a, b) => a + b, 0) * 40 + (rows.length - 1) * 12 <= h
+    const fitsVertical = rows.length * 70 + segCount.reduce((a, b) => a + b, 0) * 44 + (rows.length - 1) * 12 <= h
     const cols = w >= 760 ? 5 : w >= 600 ? 4 : w >= 380 ? 3 : 2
     const fitsGrid = rows.length * 44 + segCount.reduce((a, n) => a + Math.ceil(n / cols) * 22, 0) + (rows.length - 1) * 8 <= h
     if (fitsVertical || fitsGrid) {
@@ -174,7 +174,7 @@ function BarList({ rows, legend, onSelect, selected, valueLabel }: { rows: BarRo
                 </div>
               )
               return (
-                <div key={r.name} className={cn('flex min-h-0 flex-1 flex-col rounded-lg border', fitsVertical ? 'p-3' : 'px-3 py-2', onSelect && 'cursor-pointer hover:bg-muted/50')} onClick={onSelect ? () => onSelect(r.name) : undefined}>
+                <div key={r.name} className={cn('flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border', fitsVertical ? 'p-3' : 'px-3 py-2', onSelect && 'cursor-pointer hover:bg-muted/50')} onClick={onSelect ? () => onSelect(r.name) : undefined}>
                   {fitsVertical ? (
                     <>
                       <div className="mb-2 flex items-baseline justify-between gap-3">
@@ -191,7 +191,7 @@ function BarList({ rows, legend, onSelect, selected, valueLabel }: { rows: BarRo
                     </div>
                   )}
                   {fitsVertical ? (
-                    <ul className="mt-2 flex min-h-0 flex-1 flex-col justify-around">
+                    <ul className="mt-2 flex min-h-0 flex-1 flex-col justify-around overflow-hidden">
                       {segs.map((sg) => (
                         <li key={sg.key} className="py-1" style={{ maxHeight: 64 }}>
                           <div className="flex items-baseline justify-between gap-3 text-xs">

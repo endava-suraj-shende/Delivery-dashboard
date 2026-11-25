@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ServerCog, CheckCircle2, Activity, Hourglass, AlertOctagon, XCircle, MinusCircle, HelpCircle, Rocket, Ticket } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, StackedBarChart, TrendBarChart, DEV_SERIES, PROD_SERIES } from '@/components/charts'
+import { ChartCard, DonutChart, StackedBarChart, TrendBarChart, DEV_SERIES, PROD_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { ActivitiesTable, ReleasesTable, TicketDialog } from '@/components/common/Tables'
@@ -121,30 +121,27 @@ export function ProductionPage() {
             <KpiCard label="Success rate" value={d.kpis.production_success_rate} suffix="%" tone="green" compact />
             <KpiCard label="Work items needing prod" value={d.kpis.prod_required_yes} tone="blue" compact hint="Work rows with 'Production Deployment Required? = Yes'" />
           </KpiGrid>
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Production deployment status" description="Release records by status. Click to filter.">
               <DonutChart data={d.distribution} onSelect={(k) => toggleValue('prod_deployment', k)} selected={filters.prod_deployment} centerLabel="releases" />
             </ChartCard>
             <ChartCard title="Production vs non-production work" description="Work items by 'Production Deployment Required?'">
               <DonutChart data={d.prod_required} onSelect={(k) => toggleValue('prod_required', k)} selected={filters.prod_required} centerLabel="work rows" />
             </ChartCard>
-            <ChartCard title="Production deployment trend" description="Release records per release date.">
-              <TrendBarChart data={d.trend} series={PROD_SERIES.map((s) => ({ key: s.key, label: s.label, color: hex(s.color) }))} />
-            </ChartCard>
           </div>
-          <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-            <ChartCard title="Production releases by project" description="Click a bar to open the project.">
+          <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-2' : 'lg:grid-cols-1')}>
+            <ChartCard title="Production releases by project" description="Release records per project by status. Click a bar to open the project." height={CHART_HEIGHT_TALL}>
               <StackedBarChart data={d.by_project} series={PROD_SERIES} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} />
             </ChartCard>
-            <ChartCard title="Production releases by employee" description="Click a bar to open the employee.">
-              <StackedBarChart data={d.by_employee} series={PROD_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} />
-            </ChartCard>
             {FEATURES.applications && (
-              <ChartCard title="Application-wise production deployment">
+              <ChartCard title="Application-wise production deployment" height={CHART_HEIGHT_TALL}>
                 <StackedBarChart data={d.by_application} series={PROD_SERIES} onSelect={(n) => toggleValue('application', n)} />
               </ChartCard>
             )}
           </div>
+          <ChartCard title="Production releases by employee" description="Release records per person by status; red rows have blocked or failed releases. Click a row to open the employee." height="auto">
+            <StatusBreakdownTable rows={d.by_employee} series={PROD_SERIES.filter((s) => !['not_required', 'other'].includes(s.key))} onRow={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} exportName="production-releases-by-employee" />
+          </ChartCard>
           {(pd.blocked + pd.failed > 0) && (
             <ChartCard title="Blocked / failed production releases" description="Release records with Blocked or Failed status by project.">
               <StackedBarChart data={d.by_project.filter((p) => Number(p.blocked) + Number(p.failed) > 0)} series={PROD_SERIES.filter((s) => ['blocked', 'failed'].includes(s.key))} />
@@ -156,7 +153,7 @@ export function ProductionPage() {
               <CardDescription>In Production, release tickets, deployment status, responsible employee, project, application and release date.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ReleasesTable items={d.items} onTicket={setTicket} pageSize={50} />
+              <ReleasesTable items={d.items} onTicket={setTicket} pageSize={25} />
             </CardContent>
           </Card>
         </>

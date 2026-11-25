@@ -147,8 +147,8 @@ def test_excel_report_sheets(services):
     info = services.reports.generate("management", "xlsx", ALL)
     wb = load_workbook(services.reports.get(info["report_id"])["path"])
     assert wb.sheetnames == ["Executive Summary", "Employee Summary", "Project Summary", "Jira Ticket Details",
-                             "Development Deployment", "Production Deployment", "Detailed Activities", "Data Quality"]
-    ws = wb["Detailed Activities"]
+                             "Development Deployment", "Production Deployment", "Work Items", "Data Quality"]
+    ws = wb["Work Items"]
     assert ws.max_row - 1 == 12  # header + 12 activities
 
 
