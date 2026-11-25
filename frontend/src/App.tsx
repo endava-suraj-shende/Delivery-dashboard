@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppLayout } from '@/layouts/AppLayout'
 import { FilterProvider } from '@/hooks/useFilters'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { SessionProvider, useSession } from '@/hooks/useSession'
 import { ToastProvider } from '@/components/ui/toast'
 import { TooltipProvider } from '@/components/ui/primitives'
 import { LoadingState } from '@/components/common/States'
@@ -23,6 +24,8 @@ const ExcelPage = lazy(() => import('@/modules/excel/ExcelPage'))
 const StatusConfigPage = lazy(() => import('@/modules/config/StatusConfigPage'))
 const JiraConnectionsPage = lazy(() => import('@/modules/config/JiraConnectionsPage'))
 const ComparePage = lazy(() => import('@/modules/config/MiscPages').then((m) => ({ default: m.ComparePage })))
+const WelcomePage = lazy(() => import('@/modules/welcome/WelcomePage'))
+const DemoPage = lazy(() => import('@/modules/welcome/DemoPage'))
 const SettingsPage = lazy(() => import('@/modules/config/MiscPages').then((m) => ({ default: m.SettingsPage })))
 
 const queryClient = new QueryClient({
@@ -31,6 +34,13 @@ const queryClient = new QueryClient({
   },
 })
 
+function RequireSession() {
+  const { user } = useSession()
+  const loc = useLocation()
+  if (!user) return <Navigate to="/welcome" replace state={{ from: loc.pathname + loc.search }} />
+  return <Outlet />
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -38,8 +48,12 @@ export default function App() {
         <TooltipProvider>
           <ToastProvider>
             <BrowserRouter>
+              <SessionProvider>
               <FilterProvider>
                 <Routes>
+                  <Route path="welcome" element={<Suspense fallback={<LoadingState />}><WelcomePage /></Suspense>} />
+                  <Route path="demo" element={<Suspense fallback={<LoadingState />}><DemoPage /></Suspense>} />
+                  <Route element={<RequireSession />}>
                   <Route element={<AppLayout />}>
                     <Route
                       index
@@ -66,8 +80,10 @@ export default function App() {
                     <Route path="settings" element={<Suspense fallback={<LoadingState />}><SettingsPage /></Suspense>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
+                  </Route>
                 </Routes>
               </FilterProvider>
+              </SessionProvider>
             </BrowserRouter>
           </ToastProvider>
         </TooltipProvider>
