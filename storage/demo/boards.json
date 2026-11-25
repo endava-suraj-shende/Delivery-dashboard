@@ -1,0 +1,52 @@
+{
+  "boards": [
+    {
+      "id": "demo921",
+      "url": "https://demo.atlassian.net/jira/software/c/projects/PHX/boards/921",
+      "base_url": "https://demo.atlassian.net",
+      "board_id": 921,
+      "project_key": "PHX",
+      "label": "Phoenix Scrum Board",
+      "enabled": true,
+      "email_env": null,
+      "token_env": null,
+      "email": null,
+      "token_enc": null,
+      "excel_board_names": [],
+      "people": [],
+      "board_name": "Phoenix Scrum Board",
+      "board_type": "scrum",
+      "project_name": "Phoenix",
+      "last_test": null,
+      "last_test_ok": true,
+      "last_error": null,
+      "last_sync": "2026-11-26T00:08:13",
+      "last_sync_issues": 320,
+      "owner_id": null
+    },
+    {
+      "id": "demo922",
+      "url": "https://demo.atlassian.net/jira/software/c/projects/ATL/boards/922",
+      "base_url": "https://demo.atlassian.net",
+      "board_id": 922,
+      "project_key": "ATL",
+      "label": "Atlas Kanban",
+      "enabled": true,
+      "email_env": null,
+      "token_env": null,
+      "email": null,
+      "token_enc": null,
+      "excel_board_names": [],
+      "people": [],
+      "board_name": "Atlas Kanban",
+      "board_type": "kanban",
+      "project_name": "Atlas",
+      "last_test": null,
+      "last_test_ok": true,
+      "last_error": null,
+      "last_sync": "2026-11-26T00:08:14",
+      "last_sync_issues": 140,
+      "owner_id": null
+    }
+  ]
+}

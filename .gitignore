@@ -37,3 +37,7 @@ Data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# application database (accounts, encrypted Jira tokens)
+storage/app.db*
+storage/*.db*

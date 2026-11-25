@@ -64,6 +64,27 @@ class Settings(BaseSettings):
     jira_refresh_minutes: int = 15
     jira_max_issues_per_board: int = 3000
 
+    # ------------------------------------------------------------------ database / auth / e-mail
+    # SQLite by default. Run `python manage.py migrate` to create / upgrade the schema.
+    database_url: str = f"sqlite:///{(PROJECT_ROOT / 'storage' / 'app.db').as_posix()}"
+    auto_migrate: bool = True
+    # Public URL of the frontend, used in verification / reset links
+    public_url: str = "http://localhost:5173"
+    # Session JWT (HS256). When blank a key is derived from the secret key file.
+    auth_secret: str = ""
+    session_hours: int = 8
+    cookie_name: str = "edd_session"
+    cookie_secure: bool = False
+    verify_token_hours: int = 24
+    reset_token_minutes: int = 60
+    max_failed_logins: int = 5
+    lockout_minutes: int = 15
+    # Sign-up policy defaults (editable by the superuser in the UI)
+    default_allowed_domains: List[str] = Field(default_factory=lambda: ["endava.com"])
+    # Resend (https://resend.com). Without an API key links are written to the log (and returned in local env).
+    resend_api_key: str = ""
+    email_from: str = "Delivery Dashboard <onboarding@resend.dev>"
+
     @property
     def jira_configured(self) -> bool:
         return bool(self.jira_email and self.jira_api_token)

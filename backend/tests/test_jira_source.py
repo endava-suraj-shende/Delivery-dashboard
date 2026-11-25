@@ -23,7 +23,9 @@ def jira_mode(jira_settings, fake_jira, monkeypatch):  # noqa: F811
     container_mod.get_container.cache_clear()
     monkeypatch.setattr(container_mod, "get_settings", lambda: jira_settings)
     from app.main import app as fastapi_app
+    from tests.conftest import login_as_admin
     with TestClient(fastapi_app) as c:
+        login_as_admin(c)
         yield c, container_mod.get_container()
     container_mod.get_container.cache_clear()
 
@@ -111,7 +113,9 @@ def test_board_credentials_encrypted_and_people_filter(settings, fake_jira, monk
     container_mod.get_container.cache_clear()
     monkeypatch.setattr(container_mod, "get_settings", lambda: settings)
     from app.main import app as fastapi_app
+    from tests.conftest import login_as_admin
     with TestClient(fastapi_app) as client:
+        login_as_admin(client)
         assert client.get("/api/v1/jira/connections/credentials").json()["configured"] is False
         # add a board with its own credentials (no default credentials at all)
         r = client.post("/api/v1/jira/connections/boards", json={
@@ -119,12 +123,17 @@ def test_board_credentials_encrypted_and_people_filter(settings, fake_jira, monk
         assert r.status_code == 200, r.text
         bid = r.json()["id"]
         assert r.json()["credential_source"] == "ui" and "token" not in r.json() and "token_enc" not in r.json()
-        raw = json.loads(settings.jira_boards_path.read_text())["boards"][0]
-        assert raw["token_enc"].startswith("enc:") and "board-secret" not in settings.jira_boards_path.read_text()
+        # persisted in the database (jira_boards.config) with the token encrypted
+        import sqlite3
+        db_path = settings.database_url.replace("sqlite:///", "", 1)
+        rows = sqlite3.connect(db_path).execute("select config from jira_boards").fetchall()
+        raw = json.loads(rows[0][0])
+        assert raw["token_enc"].startswith("enc:") and "board-secret" not in rows[0][0]
         # the credentials used for the first board are remembered as the default for the next ones
         creds = client.get("/api/v1/jira/connections/credentials").json()
         assert creds["configured"] is True and creds["source"] == "ui" and creds["email"] == "me@x.com"
-        assert "board-secret" not in settings.jira_credentials_path.read_text()
+        settings_rows = sqlite3.connect(db_path).execute("select value from app_settings where key='jira_default_credentials'").fetchall()
+        assert settings_rows and "board-secret" not in settings_rows[0][0]
         st = client.post("/api/v1/data/reload").json()
         assert st["source"] == "jira" and st["employee_count"] == 3
         # people mapping: only Alice
@@ -139,7 +148,8 @@ def test_board_credentials_encrypted_and_people_filter(settings, fake_jira, monk
         # default credentials via UI, encrypted
         c = client.put("/api/v1/jira/connections/credentials", json={"email": "default@x.com", "token": "default-secret"}).json()
         assert c["configured"] and c["source"] == "ui" and c["token_masked"].endswith("cret")
-        assert "default-secret" not in settings.jira_credentials_path.read_text()
+        settings_rows = sqlite3.connect(db_path).execute("select value from app_settings where key='jira_default_credentials'").fetchall()
+        assert "default-secret" not in settings_rows[0][0]
     container_mod.get_container.cache_clear()
 
 

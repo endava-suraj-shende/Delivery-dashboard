@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, BarChart3, FileOutput, GitCompareArrows, LogIn, Mail, Play, ServerCog, ShieldCheck, Sparkles, Timer, UserPlus, Users, Zap, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input, Label } from '@/components/ui/input'
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useSession } from '@/hooks/useSession'
+import { homeFor, useSession } from '@/hooks/useSession'
+import { AuthDialog, type AuthMode } from '@/modules/auth/AuthDialog'
 import { cn } from '@/lib/utils'
 import './welcome.css'
 
@@ -164,56 +165,6 @@ function Scene() {
   )
 }
 
-/* ------------------------------------------------------------------ auth dialogs */
-function AuthDialog({ mode, open, onOpenChange, onSwitch }: { mode: 'login' | 'signup'; open: boolean; onOpenChange: (o: boolean) => void; onSwitch: () => void }) {
-  const { signIn, signUp } = useSession()
-  const nav = useNavigate()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { if (open) { setError(null); setPassword('') } }, [open, mode])
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setBusy(true); setError(null)
-    try {
-      if (mode === 'login') await signIn(email.trim(), password)
-      else await signUp(name, email.trim(), password)
-      onOpenChange(false)
-      nav('/')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">{mode === 'login' ? <><LogIn className="h-4 w-4" /> Sign in</> : <><UserPlus className="h-4 w-4" /> Create your account</>}</DialogTitle>
-          <DialogDescription>{mode === 'login' ? 'Use your work email to open the dashboards.' : 'Access is for the delivery team and leadership. Use your work email.'}</DialogDescription>
-        </DialogHeader>
-        <form className="space-y-3" onSubmit={submit}>
-          {mode === 'signup' && (
-            <div><Label>Full name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="mt-1" autoComplete="name" required /></div>
-          )}
-          <div><Label>Work email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@endava.com" className="mt-1" autoComplete="email" required /></div>
-          <div><Label>Password</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'} className="mt-1" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required /></div>
-          {error && <p className="rounded-md bg-red-500/10 px-3 py-2 text-xs text-red-600">{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Please wait' : mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight /></Button>
-          <p className="text-center text-xs text-muted-foreground">
-            {mode === 'login' ? 'New here? ' : 'Already have an account? '}
-            <button type="button" className="font-medium text-primary hover:underline" onClick={onSwitch}>{mode === 'login' ? 'Create an account' : 'Sign in'}</button>
-          </p>
-          <p className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground"><ShieldCheck className="h-3 w-3" /> Trusted internal environment. No data leaves your network.</p>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 /* ------------------------------------------------------------------ guided tour */
 /* ------------------------------------------------------------------ product dialog */
 function InfoDialog({ open, onOpenChange, eyebrow, title, lead, children }: { open: boolean; onOpenChange: (o: boolean) => void; eyebrow: string; title: string; lead: string; children: ReactNode }) {
@@ -300,7 +251,8 @@ export default function WelcomePage() {
   const nav = useNavigate()
   const { user, signOut } = useSession()
   const loc = useLocation()
-  const [auth, setAuth] = useState<null | 'login' | 'signup'>(((loc.state as { auth?: 'login' | 'signup' } | null)?.auth) ?? null)
+  const wanted = new URLSearchParams(loc.search).get('auth') ?? (loc.state as { auth?: AuthMode } | null)?.auth
+  const [auth, setAuth] = useState<null | AuthMode>(wanted === 'login' || wanted === 'signup' || wanted === 'forgot' ? wanted : null)
   const [product, setProduct] = useState(false)
 
   return (
@@ -321,8 +273,8 @@ export default function WelcomePage() {
             <span className="mx-2 h-5 w-px bg-white/10" />
             {user ? (
               <>
-                <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-white" onClick={signOut}>Sign out</Button>
-                <Button size="sm" onClick={() => nav('/')}>Open dashboard <ArrowRight /></Button>
+                <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-white" onClick={() => void signOut()}>Sign out</Button>
+                <Button size="sm" onClick={() => nav(homeFor(user))}>Open dashboard <ArrowRight /></Button>
               </>
             ) : (
               <>
@@ -392,7 +344,7 @@ export default function WelcomePage() {
         </div>
       </footer>
 
-      <AuthDialog mode={auth ?? 'login'} open={auth !== null} onOpenChange={(o) => !o && setAuth(null)} onSwitch={() => setAuth(auth === 'login' ? 'signup' : 'login')} />
+      <AuthDialog mode={auth ?? 'login'} open={auth !== null} onOpenChange={(o) => !o && setAuth(null)} onSwitch={setAuth} />
       <ProductDialog open={product} onOpenChange={setProduct} />
     </div>
   )

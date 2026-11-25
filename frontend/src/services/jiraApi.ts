@@ -2,6 +2,8 @@ import { api } from '@/services/api'
 import type { Period } from '@/types'
 
 export interface JiraBoard {
+  owner_id?: string | null
+  owner_name?: string | null
   id: string
   url: string
   base_url: string
@@ -36,6 +38,7 @@ export interface UserMatch {
 }
 
 export interface JiraStatus {
+  is_admin?: boolean
   configured: boolean
   email: string | null
   boards: JiraBoard[]

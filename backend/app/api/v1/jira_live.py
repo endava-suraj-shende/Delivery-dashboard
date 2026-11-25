@@ -6,13 +6,30 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from app.api.auth_deps import admin_only, managers
 from app.api.deps import container, filters, loaded_container
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, NotFoundError
+from app.db.models import ROLE_ADMIN, User
 from app.events.event_bus import Events
 from app.services.container import Container
 from app.services.filter_service import Filters
 
-router = APIRouter(prefix="/jira", tags=["Jira Live"])
+router = APIRouter(prefix="/jira", tags=["Jira Live"], dependencies=[Depends(managers)])
+
+
+def _visible(c: Container, user: User):
+    """Admins see every board; delivery managers the boards they configured or were granted by auth code."""
+    from app.api.auth_deps import visible_board_ids
+    boards = c.jira_boards.list()
+    ids = visible_board_ids(c, user)
+    return boards if ids is None else [b for b in boards if b.id in ids]
+
+
+def _owned(c: Container, user: User, board_id: str):
+    cfg = c.jira_boards.get(board_id)
+    if user.role != ROLE_ADMIN and cfg.owner_id != user.id:
+        raise NotFoundError(f"Board '{board_id}' not configured")
+    return cfg
 
 
 class BoardCreate(BaseModel):
@@ -40,6 +57,7 @@ class BoardUpdate(BaseModel):
     excel_board_names: Optional[List[str]] = None
     people: Optional[List[str]] = None
     project_key: Optional[str] = None
+    owner_id: Optional[str] = Field(None, description="Admin only: reassign the board to another user")
 
 
 class BoardTest(BaseModel):
@@ -64,22 +82,43 @@ class UserMapping(BaseModel):
 
 # ---------------------------------------------------------------- connections
 @router.get("/connections")
-def connections(c: Container = Depends(container)) -> Dict[str, Any]:
-    return c.jira.status()
+def connections(user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    st = c.jira.status()
+    visible = {b.id for b in _visible(c, user)}
+    owners: Dict[str, str] = {}
+    if user.role == ROLE_ADMIN:
+        from sqlalchemy import select
+        with c.db() as db:
+            owners = {u.id: u.name for u in db.execute(select(User)).scalars().all()}
+    st["boards"] = [{**b, "owner_name": owners.get(b.get("owner_id") or "")} for b in st["boards"] if b.get("id") in visible]
+    st["is_admin"] = user.role == ROLE_ADMIN
+    return st
 
 
 @router.get("/connections/boards")
-def list_boards(c: Container = Depends(container)) -> Dict[str, Any]:
-    return {"items": [b.to_dict() for b in c.jira_boards.list()]}
+def list_boards(user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    from sqlalchemy import select
+    owners: Dict[str, str] = {}
+    if user.role == ROLE_ADMIN:
+        with c.db() as db:
+            owners = {u.id: u.name for u in db.execute(select(User)).scalars().all()}
+    items = []
+    for b in _visible(c, user):
+        d = b.to_dict()
+        d["owner_name"] = owners.get(b.owner_id) if b.owner_id else None
+        d["can_edit"] = user.role == ROLE_ADMIN or b.owner_id == user.id
+        items.append(d)
+    return {"items": items, "can_manage_credentials": user.role == ROLE_ADMIN}
 
 
 @router.post("/connections/boards")
-def add_board(body: BoardCreate, c: Container = Depends(container)) -> Dict[str, Any]:
+def add_board(body: BoardCreate, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
     email, token = (body.email or "").strip(), (body.token or "").strip()
     if not (body.email_env and body.token_env) and not (email and token) and not c.jira_boards.default_credentials_info()["configured"]:
         raise AppError("Atlassian email and API token are required to add a board")
     cfg = c.jira_boards.add(body.url, body.label, body.enabled, body.email_env, body.token_env, body.excel_board_names,
-                            test=body.test, email=email or None, token=token or None, people=body.people)
+                            test=body.test, email=email or None, token=token or None, people=body.people,
+                            owner_id=user.id)
     # Remember the credentials used so the next board can be added without typing them again â€”
     # but never overwrite a default that is already configured (other boards depend on it).
     if email and token and not c.jira_boards.default_credentials_info()["configured"]:
@@ -89,15 +128,19 @@ def add_board(body: BoardCreate, c: Container = Depends(container)) -> Dict[str,
 
 
 @router.put("/connections/boards/{board_id}")
-def update_board(board_id: str, body: BoardUpdate, c: Container = Depends(container)) -> Dict[str, Any]:
-    cfg = c.jira_boards.update(board_id, **body.model_dump(exclude_none=True))
+def update_board(board_id: str, body: BoardUpdate, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    _owned(c, user, board_id)
+    changes = body.model_dump(exclude_none=True)
+    if user.role != ROLE_ADMIN:
+        changes.pop("owner_id", None)
+    cfg = c.jira_boards.update(board_id, **changes)
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board=cfg.label)
     return cfg.to_dict()
 
 
 @router.get("/connections/boards/{board_id}/assignees")
-def board_assignees(board_id: str, c: Container = Depends(container)) -> Dict[str, Any]:
-    cfg = c.jira_boards.get(board_id)
+def board_assignees(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    cfg = _owned(c, user, board_id)
     names = c.jira_source.assignees(board_id)
     if not names:
         # not loaded yet (e.g. Excel mode) -> peek at the board
@@ -111,19 +154,19 @@ def board_assignees(board_id: str, c: Container = Depends(container)) -> Dict[st
     return {"board_id": board_id, "assignees": names, "selected": cfg.people}
 
 
-@router.get("/connections/credentials")
+@router.get("/connections/credentials", dependencies=[Depends(admin_only)])
 def get_credentials(c: Container = Depends(container)) -> Dict[str, Any]:
     return c.jira_boards.default_credentials_info()
 
 
-@router.put("/connections/credentials")
+@router.put("/connections/credentials", dependencies=[Depends(admin_only)])
 def put_credentials(body: DefaultCredentials, c: Container = Depends(container)) -> Dict[str, Any]:
     c.jira_boards.set_default_credentials(body.email.strip(), body.token.strip())
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board="credentials")
     return c.jira_boards.default_credentials_info()
 
 
-@router.delete("/connections/credentials")
+@router.delete("/connections/credentials", dependencies=[Depends(admin_only)])
 def delete_credentials(c: Container = Depends(container)) -> Dict[str, Any]:
     c.jira_boards.clear_default_credentials()
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board="credentials")
@@ -131,14 +174,16 @@ def delete_credentials(c: Container = Depends(container)) -> Dict[str, Any]:
 
 
 @router.delete("/connections/boards/{board_id}")
-def delete_board(board_id: str, c: Container = Depends(container)) -> Dict[str, Any]:
+def delete_board(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    _owned(c, user, board_id)
     c.jira_boards.remove(board_id)
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board=board_id)
     return {"removed": board_id}
 
 
 @router.post("/connections/boards/{board_id}/test")
-def test_board(board_id: str, c: Container = Depends(container)) -> Dict[str, Any]:
+def test_board(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    _owned(c, user, board_id)
     return c.jira_boards.test(board_id)
 
 
@@ -175,7 +220,10 @@ def me(base_url: Optional[str] = Query(None), c: Container = Depends(container))
 
 # ---------------------------------------------------------------- sync / reconciliation
 @router.post("/live/sync")
-def sync(force: bool = Query(False), board_id: Optional[str] = Query(None), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def sync(force: bool = Query(False), board_id: Optional[str] = Query(None), user: User = Depends(managers),
+         c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    if board_id:
+        _owned(c, user, board_id)
     return c.jira.sync(force=force, board_id=board_id)
 
 
@@ -221,7 +269,7 @@ def users(c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return {"jira_users": c.jira.all_jira_users(), "mapping": c.jira.user_map_summary()}
 
 
-@router.put("/live/user-map")
+@router.put("/live/user-map", dependencies=[Depends(admin_only)])
 def set_user_map(body: UserMapping, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     c.jira.set_user_mapping(body.employee, body.account_id, body.display_name, body.email)
     c.analytics.invalidate()

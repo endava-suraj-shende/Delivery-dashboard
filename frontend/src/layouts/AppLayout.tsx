@@ -23,6 +23,8 @@ import {
   Plug,
   Zap,
   LogOut,
+  UserCog,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HelpTip } from '@/components/ui/primitives'
@@ -33,6 +35,8 @@ import { useDataStatus } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { useTheme } from '@/hooks/useTheme'
 import { useSession } from '@/hooks/useSession'
+import { rolesFor } from '@/App'
+import { ROLE_LABEL } from '@/services/authApi'
 import { excelApi, errorMessage } from '@/services/api'
 import { cn, fmtDate } from '@/lib/utils'
 
@@ -51,6 +55,7 @@ const NAV = [
   { to: '/config/status', label: 'Status Configuration', icon: SlidersHorizontal },
   { to: '/config/jira', label: 'Jira Connections', icon: Plug },
   { to: '/settings', label: 'Application Settings', icon: Settings },
+  { to: '/admin/users', label: 'User Management', icon: UserCog },
 ]
 
 export function AppLayout() {
@@ -64,6 +69,9 @@ export function AppLayout() {
   const loc = useLocation()
   const nav = useNavigate()
   const { user, signOut } = useSession()
+  const visibleNav = NAV.filter((n) => { const r = rolesFor(n.to); return !r || (user && r.includes(user.role)) })
+  const isGuest = user?.role === 'guest'
+  const canRefresh = user?.role === 'admin' || user?.role === 'dm'
 
   const refresh = useMutation({
     mutationFn: excelApi.refresh,
@@ -88,7 +96,7 @@ export function AppLayout() {
         )}
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAV.map((n) => {
+        {visibleNav.map((n) => {
           const Icon = n.icon
           const link = (
             <NavLink
@@ -114,7 +122,7 @@ export function AppLayout() {
         })}
       </nav>
       <div className="border-t border-white/10 p-2">
-        {!collapsed && status && (
+        {!collapsed && status && canRefresh && (
           <div className="mb-2 rounded-md bg-white/5 p-2 text-[11px] leading-relaxed text-sidebar-foreground/80">
             <p className="flex items-center gap-1 font-medium text-sidebar-foreground">
               {status.source === 'excel' ? <Database className="h-3 w-3" /> : <Plug className="h-3 w-3" />} Source: {status.source === 'jira' ? 'Jira boards' : status.source === 'both' ? 'Jira + Excel' : 'Excel'}
@@ -147,9 +155,9 @@ export function AppLayout() {
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
             <Menu />
           </Button>
-          <GlobalSearch />
+          {canRefresh && <GlobalSearch />}
           <div className="ml-auto flex items-center gap-2">
-            {status && (
+            {status && canRefresh && (
               <HelpTip text={`Source: ${status.source_dir}\nLast refresh: ${status.last_refresh ? new Date(status.last_refresh).toLocaleString() : '-'}\nLoad time: ${status.load_duration_ms ?? '-'} ms`}>
                 <div className="hidden items-center gap-2 md:flex">
                   <Badge variant={status.needs_refresh ? 'warning' : 'success'} className="gap-1 font-normal">
@@ -162,23 +170,30 @@ export function AppLayout() {
                 </div>
               </HelpTip>
             )}
-            <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
-              <RefreshCw className={cn(refresh.isPending && 'animate-spin')} /> Refresh data
-            </Button>
+            {canRefresh && (
+              <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+                <RefreshCw className={cn(refresh.isPending && 'animate-spin')} /> Refresh data
+              </Button>
+            )}
             <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
               {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
             {user && (
-              <HelpTip text={`${user.email}\nSigned in ${new Date(user.signedInAt).toLocaleString()}`}>
+              <HelpTip text={`${user.email}\n${ROLE_LABEL[user.role]}`}>
                 <div className="ml-1 flex items-center gap-2 rounded-full border py-1 pl-1 pr-2">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">{user.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</span>
-                  <span className="hidden max-w-[140px] truncate text-xs font-medium md:inline">{user.name}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { signOut(); nav('/welcome') }} aria-label="Sign out" title="Sign out"><LogOut className="h-3.5 w-3.5" /></Button>
+                  <span className="hidden max-w-[160px] flex-col leading-tight md:flex"><span className="truncate text-xs font-medium">{user.name}</span><span className="truncate text-[10px] text-muted-foreground">{ROLE_LABEL[user.role]}</span></span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await signOut(); nav('/welcome') }} aria-label="Sign out" title="Sign out"><LogOut className="h-3.5 w-3.5" /></Button>
                 </div>
               </HelpTip>
             )}
           </div>
         </header>
+        {isGuest && (
+          <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-200 no-print">
+            <Sparkles className="h-3.5 w-3.5" /> <b>Demo data.</b> You are exploring the dashboards with synthetic people and tickets. Guest access ends {user?.access_expires_at ? new Date(user.access_expires_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : 'soon'}.
+          </div>
+        )}
         <main key={loc.pathname} className="flex-1 overflow-y-auto p-4 md:p-6 print-full">
           <div className="mx-auto max-w-[1600px] space-y-5">
             <Outlet />

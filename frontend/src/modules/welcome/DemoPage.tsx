@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BarChart3, Bot, Brain, CheckCircle2, ChevronLeft, ChevronRight, Database, FileOutput, GitCompareArrows, Layers, LogIn, Pause, Play, Rocket, ServerCog, ShieldCheck, Sparkles, Target, Timer, Users, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useSession } from '@/hooks/useSession'
+import { homeFor, useSession } from '@/hooks/useSession'
 import { cn } from '@/lib/utils'
 import './welcome.css'
 import './demo.css'
@@ -400,7 +400,7 @@ export default function DemoPage() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-white" onClick={() => setNotes((n) => !n)}>{notes ? 'Hide notes' : 'Show notes'}</Button>
           <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-white" onClick={() => setPlaying((p) => !p)}>{playing ? <><Pause /> Pause</> : <><Play /> Play</>}</Button>
-          {user ? <Button size="sm" onClick={() => nav('/')}>Open dashboard <ArrowRight /></Button> : <Button size="sm" className="bg-gradient-to-r from-blue-500 to-cyan-400 text-white hover:from-blue-400 hover:to-cyan-300" onClick={() => nav('/welcome', { state: { auth: 'login' } })}><LogIn /> Log in</Button>}
+          {user ? <Button size="sm" onClick={() => nav(homeFor(user))}>Open dashboard <ArrowRight /></Button> : <Button size="sm" className="bg-gradient-to-r from-blue-500 to-cyan-400 text-white hover:from-blue-400 hover:to-cyan-300" onClick={() => nav('/welcome?auth=login')}><LogIn /> Log in</Button>}
         </div>
       </header>
       <div className="relative z-20 h-0.5 w-full bg-white/5"><div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500" style={{ width: `${progress}%` }} /></div>

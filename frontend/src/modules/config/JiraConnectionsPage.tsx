@@ -97,14 +97,16 @@ export default function JiraConnectionsPage() {
               <span className="flex flex-wrap gap-2">{s.errors.map((e) => <Badge key={e.scope} variant="danger" title={e.error}>{e.scope}: {e.error.slice(0, 90)}</Badge>)}</span>
             </Notice>
           )}
-          <DataSourceCard compact />
-          <CredentialsCard status={s} />
+          {s.is_admin && <DataSourceCard compact />}
+          {s.is_admin ? <CredentialsCard status={s} /> : (
+            <Notice tone="info" icon={KeyRound}>You see only the boards you configured. Dashboards and reports are limited to those boards. Each board uses the Atlassian account you enter when adding it.</Notice>
+          )}
 
           <Tabs defaultValue="boards">
             <TabsList>
               <TabsTrigger value="boards">Boards ({s.boards.length})</TabsTrigger>
               <TabsTrigger value="discover">Discover boards</TabsTrigger>
-              <TabsTrigger value="users">People mapping</TabsTrigger>
+              {s.is_admin && <TabsTrigger value="users">People mapping</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="boards" className="space-y-4">
@@ -310,6 +312,7 @@ function BoardRow({ board: b, excelBoardNames, onToggle, onLabel, onAliases, onT
         <span className="text-xs text-muted-foreground">board #{b.board_id} | {b.board_type ?? '?'} | {b.base_url.replace('https://', '')}</span>
         {b.has_custom_credentials && <Badge variant="secondary" title={b.credential_source === 'ui' ? `Own credentials (${b.email ?? 'email n/a'}), token encrypted` : `Uses ${b.token_env}`}>own credentials{b.email ? `: ${b.email}` : ''}</Badge>}
         {b.people.length > 0 && <Badge variant="info" title={b.people.join(', ')}><Users className="mr-1 h-3 w-3" /> {b.people.length} people</Badge>}
+        {b.owner_name && <Badge variant="outline" title="Configured by">owner: {b.owner_name}</Badge>}
         {b.last_test_ok === true && <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> reachable</Badge>}
         {b.last_test_ok === false && <Badge variant="danger" className="gap-1" title={b.last_error ?? ''}><AlertTriangle className="h-3 w-3" /> {b.last_error?.slice(0, 60) ?? 'error'}</Badge>}
         <span className="ml-auto text-xs text-muted-foreground">{b.last_sync ? `synced ${new Date(b.last_sync).toLocaleString()} | ${b.last_sync_issues} issues` : 'not synced yet'}</span>
