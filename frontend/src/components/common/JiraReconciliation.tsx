@@ -29,9 +29,9 @@ export function VerdictBadge({ verdict }: { verdict: ReconRow['verdict'] }) {
 
 export function JiraStatusBadge({ status, category }: { status: string | null; category: string | null }) {
   const lookup = useCategoryLookup()
-  if (!status) return <span className="text-xs text-muted-foreground">—</span>
+  if (!status) return <span className="text-xs text-muted-foreground">-</span>
   const meta = category ? lookup.work_status[category] : undefined
-  return <StatusBadge color={meta?.color} title={meta ? `→ ${meta.label}` : undefined}>{status}</StatusBadge>
+  return <StatusBadge color={meta?.color} title={meta ? `Mapped to ${meta.label}` : undefined}>{status}</StatusBadge>
 }
 
 export function ReconSummaryCards({ summary, onSync, syncing, compact = true }: { summary: ReconSummary; onSync?: () => void; syncing?: boolean; compact?: boolean }) {
@@ -42,7 +42,7 @@ export function ReconSummaryCards({ summary, onSync, syncing, compact = true }: 
         <KpiCard label="Match" value={summary.matched} tone="green" compact={compact} />
         <KpiCard label="Conflicts" value={summary.errors} tone={summary.errors ? 'red' : 'green'} compact={compact} hint="Status conflicts and ticket ids not found in Jira." />
         <KpiCard label="Warnings" value={summary.warnings} tone={summary.warnings ? 'orange' : 'green'} compact={compact} hint="Assignee / production / completion mismatches." />
-        <KpiCard label="Not found in Jira" value={summary.not_found} tone={summary.not_found ? 'red' : 'grey'} compact={compact} sub={[summary.unmapped_board ? `${summary.unmapped_board} no board configured` : '', summary.unverified ? `${summary.unverified} unverified (sync error)` : ''].filter(Boolean).join(' · ') || undefined} />
+        <KpiCard label="Not found in Jira" value={summary.not_found} tone={summary.not_found ? 'red' : 'grey'} compact={compact} sub={[summary.unmapped_board ? `${summary.unmapped_board} no board configured` : '', summary.unverified ? `${summary.unverified} unverified (sync error)` : ''].filter(Boolean).join(' | ') || undefined} />
         <KpiCard label="Missing from Excel" value={summary.missing_from_excel} tone={summary.missing_from_excel ? 'orange' : 'grey'} compact={compact} hint="Jira issues assigned to a team member (updated in the period) that no sheet reports." />
       </KpiGrid>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -90,9 +90,9 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
         accessorKey: 'excel_status',
         header: 'Excel status',
         cell: ({ row }) => {
-          if (!row.original.excel_status) return <span className="text-xs text-muted-foreground">—</span>
+          if (!row.original.excel_status) return <span className="text-xs text-muted-foreground">-</span>
           const meta = lookup.work_status[row.original.excel_status]
-          return <StatusBadge color={meta?.color} title={meta ? `→ ${meta.label}` : undefined}>{row.original.excel_status_raw ?? meta?.label ?? row.original.excel_status}</StatusBadge>
+          return <StatusBadge color={meta?.color} title={meta ? `Mapped to ${meta.label}` : undefined}>{row.original.excel_status_raw ?? meta?.label ?? row.original.excel_status}</StatusBadge>
         },
         filterFn: 'equalsString',
       },
@@ -102,13 +102,13 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
         header: 'Jira assignee',
         cell: ({ row }) => (
           <span className={cn('whitespace-nowrap', row.original.flags.some((f) => f.code === 'assignee_mismatch') && 'text-orange-600 font-medium')}>
-            {row.original.jira_assignee ?? (row.original.jira_found ? <span className="italic text-muted-foreground">unassigned</span> : '—')}
+            {row.original.jira_assignee ?? (row.original.jira_found ? <span className="italic text-muted-foreground">unassigned</span> : '-')}
           </span>
         ),
       },
       { accessorKey: 'jira_sprint', header: 'Sprint' },
       { accessorKey: 'jira_updated', header: 'Jira updated', cell: ({ getValue }) => <span className="whitespace-nowrap">{fmtDate(getValue() as string)}</span> },
-      { id: 'excel_release_status', accessorFn: (r) => r.excel_release_status ?? '', header: 'Excel prod', cell: ({ row }) => (row.original.excel_release_status ? <StatusBadge color={lookup.prod_deployment[row.original.excel_release_status]?.color}>{lookup.prod_deployment[row.original.excel_release_status]?.label ?? row.original.excel_release_status}</StatusBadge> : <span className="text-xs text-muted-foreground">—</span>) },
+      { id: 'excel_release_status', accessorFn: (r) => r.excel_release_status ?? '', header: 'Excel prod', cell: ({ row }) => (row.original.excel_release_status ? <StatusBadge color={lookup.prod_deployment[row.original.excel_release_status]?.color}>{lookup.prod_deployment[row.original.excel_release_status]?.label ?? row.original.excel_release_status}</StatusBadge> : <span className="text-xs text-muted-foreground">-</span>) },
       {
         id: 'flags',
         accessorFn: (r) => r.flags.map((f) => f.message).join(' | '),
@@ -119,14 +119,14 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
             {row.original.flags.length === 0 && <li className="text-xs text-green-600">Excel and Jira agree</li>}
             {row.original.flags.map((f, i) => (
               <li key={i} className={cn('text-xs', f.severity === 'error' ? 'text-red-600' : f.severity === 'warning' ? 'text-orange-600' : 'text-muted-foreground')}>
-                • {f.message}
+                - {f.message}
               </li>
             ))}
           </ul>
         ),
       },
       { id: 'summary', accessorFn: (r) => r.work_details ?? r.jira_summary ?? '', header: 'Summary', cell: ({ row }) => <HelpTip text={row.original.work_details ?? row.original.jira_summary ?? ''}><span>{truncate(row.original.work_details ?? row.original.jira_summary, 70)}</span></HelpTip>, size: 260 },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => (row.original.file_name ? <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 26)} · r{row.original.source_row}</span> : <span className="text-[11px] text-muted-foreground">Jira only</span>) },
+      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => (row.original.file_name ? <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 26)} | r{row.original.source_row}</span> : <span className="text-[11px] text-muted-foreground">Jira only</span>) },
     )
     return cols
   }, [hideEmployee, onTicket, lookup])
@@ -137,7 +137,7 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
       pageSize={pageSize}
       dense
       exportName="excel-vs-jira"
-      searchPlaceholder="Search ticket, employee, finding…"
+      searchPlaceholder="Search by ticket, employee or finding"
       columnFilters={[
         { id: 'verdict', label: 'Result', options: Object.entries(VERDICT_META).map(([k, v]) => ({ value: k, label: v.label })) },
         { id: 'excel_status', label: 'Excel status', options: Object.values(lookup.work_status).map((c) => ({ value: c.key, label: c.label })) },

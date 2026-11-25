@@ -8,15 +8,19 @@ export function cn(...inputs: ClassValue[]) {
 export const STATUS_COLORS: Record<string, string> = {
   green: '#16a34a',
   blue: '#2563eb',
+  sky: '#0ea5e9',
   orange: '#f97316',
   amber: '#eab308',
   pink: '#db2777',
   red: '#dc2626',
-  grey: '#6b7280',
+  grey: '#9ca3af',
+  slate: '#64748b',
   purple: '#7c3aed',
+  violet: '#a855f7',
   teal: '#0d9488',
-  cyan: '#0891b2',
+  cyan: '#06b6d4',
   indigo: '#4f46e5',
+  lime: '#65a30d',
 }
 
 export const PALETTE = ['#2563eb', '#16a34a', '#f97316', '#7c3aed', '#0d9488', '#dc2626', '#0891b2', '#ca8a04', '#db2777', '#4f46e5', '#65a30d', '#9333ea', '#ea580c', '#0284c7']
@@ -27,17 +31,17 @@ export function colorFor(token?: string | null, index = 0): string {
 }
 
 export function fmtNum(v: number | null | undefined, digits = 0): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return '–'
+  if (v === null || v === undefined || Number.isNaN(v)) return '-'
   return v.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 })
 }
 
 export function fmtPct(v: number | null | undefined): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return '–'
+  if (v === null || v === undefined || Number.isNaN(v)) return '-'
   return `${v.toFixed(1)}%`
 }
 
 export function fmtDate(v: string | null | undefined, opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }): string {
-  if (!v) return '–'
+  if (!v) return '-'
   const d = new Date(v.length === 10 ? `${v}T00:00:00` : v)
   if (Number.isNaN(d.getTime())) return v
   return d.toLocaleDateString(undefined, opts)
@@ -56,7 +60,7 @@ export function toISODate(d: Date): string {
 
 export function truncate(s: string | null | undefined, n = 80): string {
   if (!s) return ''
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s
+  return s.length > n ? `${s.slice(0, n - 1)}...` : s
 }
 
 export function fileSize(bytes: number): string {

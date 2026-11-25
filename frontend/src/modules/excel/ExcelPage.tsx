@@ -2,12 +2,12 @@ import { useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { AlertTriangle, CheckCircle2, Eye, FileSpreadsheet, FolderOpen, History, RefreshCw, ShieldAlert, Trash2, Upload, Loader2, Copy } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Eye, FileSpreadsheet, FolderOpen, History, Info, RefreshCw, ShieldAlert, Trash2, Upload, Loader2, Copy } from 'lucide-react'
+import { KeyValueList, Notice, SettingsCard, StatStrip, StatTile } from '@/components/common/Settings'
 import { PageHeader } from '@/components/common/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { ErrorState, LoadingState, EmptyState } from '@/components/common/States'
-import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -41,8 +41,8 @@ export default function ExcelPage() {
     onSuccess: (r) => {
       invalidate()
       const j = r.jira as { compared?: number; errors?: number; warnings?: number; not_found?: number; error?: string } | null
-      const jiraText = j ? (j.error ? ` · Jira: ${j.error}` : ` · Jira: ${j.compared} compared, ${j.errors} conflicts, ${j.warnings} warnings, ${j.not_found} not found`) : ''
-      toast({ title: 'Workbook uploaded', description: `${r.file_name} · ${r.issues.length} validation note(s)${jiraText}`, variant: j && (j.errors || 0) > 0 ? 'destructive' : 'success' })
+      const jiraText = j ? (j.error ? ` | Jira: ${j.error}` : ` | Jira: ${j.compared} compared, ${j.errors} conflicts, ${j.warnings} warnings, ${j.not_found} not found`) : ''
+      toast({ title: 'Workbook uploaded', description: `${r.file_name} | ${r.issues.length} validation note(s)${jiraText}`, variant: j && (j.errors || 0) > 0 ? 'destructive' : 'success' })
     },
     onError: (e) => toast({ title: 'Upload rejected', description: errorMessage(e), variant: 'destructive' }),
   })
@@ -104,6 +104,17 @@ export default function ExcelPage() {
     [],
   )
 
+  type Hist = NonNullable<typeof history.data>[number]
+  const historyCols = useMemo<ColumnDef<Hist, unknown>[]>(() => [
+    { accessorKey: 'timestamp', header: 'When', cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{new Date(getValue() as string).toLocaleString()}</span> },
+    { accessorKey: 'reason', header: 'Trigger', cell: ({ getValue }) => <Badge variant="secondary">{String(getValue())}</Badge> },
+    { id: 'files', accessorFn: (h) => h.parsed, header: 'Files parsed', meta: { align: 'right' }, cell: ({ row }) => <span className="tabular-nums">{row.original.parsed} / {row.original.files}</span> },
+    { accessorKey: 'activities', header: 'Work rows', meta: { align: 'right' }, cell: ({ getValue }) => <span className="tabular-nums">{getValue() as number}</span> },
+    { accessorKey: 'releases', header: 'Releases', meta: { align: 'right' }, cell: ({ getValue }) => <span className="tabular-nums">{getValue() as number}</span> },
+    { accessorKey: 'duration_ms', header: 'Duration', meta: { align: 'right' }, cell: ({ getValue }) => <span className="tabular-nums text-muted-foreground">{getValue() as number} ms</span> },
+    { accessorKey: 'failed', header: 'Result', cell: ({ row }) => (row.original.failed > 0 ? <Badge variant="danger" title={row.original.failures.map((f) => f.file).join(', ')}>{row.original.failed} failed</Badge> : <Badge variant="success">ok</Badge>) },
+  ], [])
+
   const s = status.data
   const qs = quality.data?.summary
   const categories = useMemo(() => Array.from(new Set((quality.data?.issues ?? []).map((i) => i.category))).map((c) => ({ value: c, label: c.replace(/_/g, ' ') })), [quality.data])
@@ -127,129 +138,87 @@ export default function ExcelPage() {
         }
       />
       {s && s.source === 'jira' && (
-        <Card className="border-blue-300 bg-blue-50 dark:bg-blue-950/30">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
-            <span>The primary data source is currently <b>Jira boards</b>; Excel workbooks are not loaded into the dashboards. Switch to <b>Excel</b> or <b>Jira + Excel</b> to use the files below.</span>
-            <Button asChild size="sm" variant="outline"><Link to="/settings">Change data source</Link></Button>
-          </CardContent>
-        </Card>
+        <Notice tone="info" icon={Info} action={<Button asChild size="sm" variant="outline"><Link to="/settings">Change data source</Link></Button>}>
+          The dashboards currently use <b>Jira boards</b> as the primary source; the workbooks below are not loaded. Switch to <b>Excel</b> or <b>Jira + Excel</b> in Settings to use them.
+        </Notice>
       )}
       {s && (
-        <KpiGrid cols={6}>
-          <KpiCard label="Workbooks" value={s.file_count} icon={<FileSpreadsheet className="h-4 w-4" />} tone="green" compact sub={`${s.uploads} uploaded`} />
-          <KpiCard label="Reports parsed" value={s.report_count} icon={<CheckCircle2 className="h-4 w-4" />} tone="blue" compact />
-          <KpiCard label="Activity rows" value={s.activity_count} compact />
-          <KpiCard label="Release rows" value={s.release_count} compact />
-          <KpiCard label="Employees / projects" value={`${s.employee_count} / ${s.project_count}`} compact />
-          <KpiCard label="Data quality issues" value={s.issues_count} icon={<ShieldAlert className="h-4 w-4" />} tone={s.issues_count ? 'orange' : 'green'} compact />
-        </KpiGrid>
-      )}
-      {s && (
-        <Card>
-          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-1 p-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><FolderOpen className="h-3.5 w-3.5" /> Source folder: <code className="rounded bg-muted px-1">{s.source_dir}</code></span>
-            <span>Date range: {fmtDate(s.date_min)} – {fmtDate(s.date_max)}</span>
-            <span>Last refresh: {s.last_refresh ? new Date(s.last_refresh).toLocaleString() : '–'} ({s.load_duration_ms} ms)</span>
-            {s.needs_refresh && <Badge variant="warning">Folder changed since last load — refresh recommended</Badge>}
-          </CardContent>
-        </Card>
+        <StatStrip cols={6}>
+          <StatTile icon={FileSpreadsheet} label="Workbooks" value={s.file_count} sub={`${s.uploads} uploaded this session`} tone="green" />
+          <StatTile icon={CheckCircle2} label="Reports parsed" value={s.report_count} sub={`${fmtDate(s.date_min)} - ${fmtDate(s.date_max)}`} tone="blue" />
+          <StatTile label="Work rows" value={s.activity_count} tone="default" />
+          <StatTile label="Release rows" value={s.release_count} tone="default" />
+          <StatTile label="People / projects" value={`${s.employee_count} / ${s.project_count}`} tone="grey" />
+          <StatTile icon={ShieldAlert} label="Data quality issues" value={s.issues_count} sub={s.issues_count ? 'see Data quality tab' : 'no issues found'} tone={s.issues_count ? 'orange' : 'green'} />
+        </StatStrip>
       )}
 
-      <div
-        className="rounded-lg border-2 border-dashed p-6 text-center text-sm text-muted-foreground transition hover:border-primary/50"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); onFiles(e.dataTransfer.files) }}
-      >
-        <Upload className="mx-auto mb-2 h-5 w-5" />
-        Drag & drop .xlsx / .xls files here to add them to the session (max {25} MB each). Uploaded files are copied to <code>data/uploads</code>; the originals and the Data folder are untouched.
+      <div className="grid gap-4 lg:grid-cols-3">
+        <SettingsCard icon={FolderOpen} title="Source folder" description="Workbooks placed here are read on every refresh. Files are never modified." className="lg:col-span-2"
+          action={s?.needs_refresh ? <Badge variant="warning">Folder changed - refresh recommended</Badge> : undefined}>
+          {s && (
+            <KeyValueList items={[
+              { label: 'Folder', value: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{s.source_dir}</code> },
+              { label: 'Last refresh', value: s.last_refresh ? `${new Date(s.last_refresh).toLocaleString()} (${s.load_duration_ms} ms)` : '-' },
+              { label: 'Upload limit', value: '25 MB per file | .xlsx, .xlsm, .xls' },
+            ]} />
+          )}
+        </SettingsCard>
+        <Card
+          className="flex cursor-pointer flex-col items-center justify-center border-2 border-dashed p-6 text-center transition hover:border-primary/60 hover:bg-primary/[0.03]"
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); onFiles(e.dataTransfer.files) }}
+          role="button"
+        >
+          <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">{upload.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}</span>
+          <p className="text-sm font-medium">Drop workbooks here or click to upload</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Uploaded files are copied to data/uploads; originals and the source folder are untouched.</p>
+        </Card>
       </div>
 
       <Tabs defaultValue={sp.get('tab') ?? 'files'}>
         <TabsList>
-          <TabsTrigger value="files">Workbooks ({files.data?.items.length ?? '…'})</TabsTrigger>
-          <TabsTrigger value="quality">Data quality ({qs?.total_issues ?? '…'})</TabsTrigger>
+          <TabsTrigger value="files">Workbooks ({files.data?.items.length ?? ''})</TabsTrigger>
+          <TabsTrigger value="quality">Data quality ({qs?.total_issues ?? ''})</TabsTrigger>
           <TabsTrigger value="history">Import history</TabsTrigger>
         </TabsList>
         <TabsContent value="files">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Loaded workbooks</CardTitle>
-                <CardDescription>Click Preview to inspect sheets, raw rows, detected column mapping and validation results.</CardDescription>
-              </div>
-              {(s?.uploads ?? 0) > 0 && (
-                <Button variant="outline" size="sm" className="text-red-600" onClick={() => setConfirmClear(true)}>
-                  <Trash2 /> Remove all uploads
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {files.isLoading && <LoadingState rows={1} />}
-              {files.isError && <ErrorState error={files.error} />}
-              {files.data && <DataTable data={files.data.items} columns={fileCols} dense exportName="workbooks" onRowClick={setPreview} columnFilters={[{ id: 'origin', label: 'Origin', options: [{ value: 'folder', label: 'folder' }, { value: 'upload', label: 'upload' }] }, { id: 'layout', label: 'Layout', options: [{ value: 'template', label: 'template' }, { value: 'flat', label: 'flat' }, { value: 'unknown', label: 'unknown' }] }]} />}
-            </CardContent>
-          </Card>
+          <SettingsCard icon={FileSpreadsheet} title="Loaded workbooks" description="Click a row or Preview to inspect sheets, raw rows, detected column mapping and validation results."
+            action={(s?.uploads ?? 0) > 0 ? <Button variant="outline" size="sm" className="text-red-600" onClick={() => setConfirmClear(true)}><Trash2 /> Remove all uploads</Button> : undefined}>
+            {files.isLoading && <LoadingState rows={1} />}
+            {files.isError && <ErrorState error={files.error} />}
+            {files.data && <DataTable data={files.data.items} columns={fileCols} dense exportName="workbooks" onRowClick={setPreview} searchPlaceholder="Search workbooks" columnFilters={[{ id: 'origin', label: 'Origin', options: [{ value: 'folder', label: 'folder' }, { value: 'upload', label: 'upload' }] }, { id: 'layout', label: 'Layout', options: [{ value: 'template', label: 'template' }, { value: 'flat', label: 'flat' }, { value: 'unknown', label: 'unknown' }] }]} />}
+          </SettingsCard>
         </TabsContent>
         <TabsContent value="quality" className="space-y-4">
           {qs && (
-            <KpiGrid cols={6}>
-              <KpiCard label="Missing employee" value={qs.missing_employee} tone={qs.missing_employee ? 'orange' : 'green'} compact />
-              <KpiCard label="Missing project" value={qs.missing_project} tone={qs.missing_project ? 'orange' : 'green'} compact />
-              <KpiCard label="Rows w/o Jira id" value={qs.activities_without_ticket} tone={qs.activities_without_ticket ? 'orange' : 'green'} compact />
-              <KpiCard label="Blank status" value={qs.missing_status} tone={qs.missing_status ? 'orange' : 'green'} compact />
-              <KpiCard label="Invalid / corrected dates" value={qs.invalid_dates} tone={qs.invalid_dates ? 'orange' : 'green'} compact />
-              <KpiCard label="Duplicate rows" value={qs.duplicates} tone={qs.duplicates ? 'orange' : 'green'} compact />
-              <KpiCard label="Incomplete deployment" value={qs.incomplete_deployment} tone={qs.incomplete_deployment ? 'orange' : 'green'} compact />
-              <KpiCard label="Unmapped statuses" value={qs.unmapped_statuses} tone={qs.unmapped_statuses ? 'red' : 'green'} compact />
-              <KpiCard label="Files with errors" value={qs.files_with_errors} tone={qs.files_with_errors ? 'red' : 'green'} compact />
-            </KpiGrid>
+            <StatStrip cols={5}>
+              <StatTile label="Missing employee" value={qs.missing_employee} tone={qs.missing_employee ? 'orange' : 'green'} />
+              <StatTile label="Missing project" value={qs.missing_project} tone={qs.missing_project ? 'orange' : 'green'} />
+              <StatTile label="Rows without Jira id" value={qs.activities_without_ticket} tone={qs.activities_without_ticket ? 'orange' : 'green'} />
+              <StatTile label="Blank status" value={qs.missing_status} tone={qs.missing_status ? 'orange' : 'green'} />
+              <StatTile label="Invalid or corrected dates" value={qs.invalid_dates} tone={qs.invalid_dates ? 'orange' : 'green'} />
+              <StatTile label="Duplicate rows" value={qs.duplicates} tone={qs.duplicates ? 'orange' : 'green'} />
+              <StatTile label="Incomplete deployment" value={qs.incomplete_deployment} tone={qs.incomplete_deployment ? 'orange' : 'green'} />
+              <StatTile label="Unmapped statuses" value={qs.unmapped_statuses} tone={qs.unmapped_statuses ? 'red' : 'green'} />
+              <StatTile label="Files with errors" value={qs.files_with_errors} tone={qs.files_with_errors ? 'red' : 'green'} />
+              <StatTile label="Total issues" value={qs.total_issues} sub={`${qs.errors} errors | ${qs.warnings} warnings`} tone={qs.total_issues ? 'orange' : 'green'} />
+            </StatStrip>
           )}
           {quality.data && Object.values(quality.data.unmapped).some((v) => Object.keys(v).length) && (
-            <Card className="border-orange-300">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-orange-500" /> Unmapped status values</CardTitle>
-                <CardDescription>These Excel values could not be classified. Map them in Status Configuration so they are counted correctly.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {Object.entries(quality.data.unmapped).flatMap(([dim, vals]) => Object.entries(vals).map(([v, n]) => (
-                  <Badge key={`${dim}:${v}`} variant="warning">{dim.replace('_', ' ')}: "{v}" ×{n}</Badge>
-                )))}
-              </CardContent>
-            </Card>
+            <Notice tone="warning" icon={AlertTriangle} action={<Button asChild size="sm" variant="outline"><Link to="/config/status">Open Status Configuration</Link></Button>}>
+              <span className="flex flex-wrap items-center gap-1.5"><span className="mr-1 font-medium">Unmapped status values:</span>{Object.entries(quality.data.unmapped).flatMap(([dim, vals]) => Object.entries(vals).map(([v, n]) => <Badge key={`${dim}:${v}`} variant="warning">{dim.replace('_', ' ')}: {v} x{n}</Badge>))}</span>
+            </Notice>
           )}
-          <Card>
-            <CardHeader>
-              <CardTitle>All issues</CardTitle>
-              <CardDescription>Every anomaly detected while parsing, traceable to file and row. Nothing is silently discarded.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {quality.data ? <DataTable data={quality.data.issues} columns={issueCols} dense exportName="data-quality" pageSize={50} columnFilters={[{ id: 'severity', label: 'Severity', options: ['error', 'warning', 'info'].map((v) => ({ value: v, label: v })) }, { id: 'category', label: 'Category', options: categories }]} /> : <LoadingState rows={1} />}
-            </CardContent>
-          </Card>
+          <SettingsCard icon={ShieldAlert} title="All issues" description="Every anomaly detected while parsing, traceable to file and row. Nothing is silently discarded.">
+            {quality.data ? <DataTable data={quality.data.issues} columns={issueCols} dense exportName="data-quality" pageSize={50} searchPlaceholder="Search issues" columnFilters={[{ id: 'severity', label: 'Severity', options: ['error', 'warning', 'info'].map((v) => ({ value: v, label: v })) }, { id: 'category', label: 'Category', options: categories }]} /> : <LoadingState rows={1} />}
+          </SettingsCard>
         </TabsContent>
         <TabsContent value="history">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Import history (this session)</CardTitle>
-              <CardDescription>No database is used, so history is kept in memory for the running application only.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!history.data?.length ? <EmptyState title="No imports yet" /> : (
-                <div className="divide-y text-sm">
-                  {history.data.map((h) => (
-                    <div key={h.id} className="flex flex-wrap items-center gap-3 py-2">
-                      <span className="font-mono text-xs text-muted-foreground">{new Date(h.timestamp).toLocaleString()}</span>
-                      <Badge variant="secondary">{h.reason}</Badge>
-                      <span>{h.parsed} / {h.files} files parsed</span>
-                      <span>{h.activities} activities · {h.releases} releases</span>
-                      <span className="text-xs text-muted-foreground">{h.duration_ms} ms</span>
-                      {h.failed > 0 && <Badge variant="danger">{h.failed} failed: {h.failures.map((f) => f.file).join(', ')}</Badge>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <SettingsCard icon={History} title="Import history (this session)" description="Kept in memory for the running application only.">
+            {!history.data?.length ? <EmptyState title="No imports yet" /> : <DataTable data={history.data} columns={historyCols} dense pageSize={15} exportName="import-history" searchPlaceholder="Search imports" initialSorting={[{ id: 'timestamp', desc: true }]} />}
+          </SettingsCard>
         </TabsContent>
       </Tabs>
 
@@ -293,7 +262,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-green-600" /> {file.file_name}</DialogTitle>
           <DialogDescription>
-            {file.employee} · {file.project} · report date {fmtDate(file.report_date)} ({file.report_date_source}) · {fileSize(file.size_bytes)}
+            {file.employee} | {file.project} | report date {fmtDate(file.report_date)} ({file.report_date_source}) | {fileSize(file.size_bytes)}
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="validation">
@@ -332,7 +301,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
               {v && (
                 <Badge variant={v.valid ? 'success' : 'danger'} className="gap-1">
                   {v.valid ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                  {v.valid ? 'Valid' : 'Problems found'} · layout: {v.layout} · {v.work_items} work items · {v.releases} releases
+                  {v.valid ? 'Valid' : 'Problems found'} | layout: {v.layout} | {v.work_items} work items | {v.releases} releases
                 </Badge>
               )}
             </div>
@@ -347,7 +316,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
                       <div key={f} className={cn('flex items-center justify-between gap-2 rounded border p-2 text-xs', required && !mapped && 'border-red-400 bg-red-50 dark:bg-red-950/30')}>
                         <span className="font-medium">{f.replace(/_/g, ' ')}{required && <span className="text-red-500"> *</span>}</span>
                         <NativeSelect className="h-7 w-[55%] text-xs" value={overrides[f] ?? mapped?.header ?? ''} onChange={(e) => setOverrides((o) => ({ ...o, [f]: e.target.value }))}>
-                          <option value="">— not mapped —</option>
+                          <option value="">- not mapped -</option>
                           {(headers ?? []).map((h) => (
                             <option key={h} value={h}>{h}</option>
                           ))}
@@ -402,7 +371,7 @@ function PreviewDialog({ file, onClose }: { file: FileInfo; onClose: () => void 
                     ))}
                   </tbody>
                 </table>
-                <p className="p-2 text-xs text-muted-foreground">Showing first {preview.data.rows.length} of {preview.data.total_rows} rows · {preview.data.total_columns} columns</p>
+                <p className="p-2 text-xs text-muted-foreground">Showing first {preview.data.rows.length} of {preview.data.total_rows} rows | {preview.data.total_columns} columns</p>
               </div>
             )}
           </TabsContent>

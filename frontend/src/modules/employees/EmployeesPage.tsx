@@ -1,19 +1,18 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, AlertOctagon, CheckCircle2, Hourglass, Ticket, Users, UserX } from 'lucide-react'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
-import { DataTable } from '@/components/common/DataTable'
-import { ChartCard, DonutChart, GroupedBarChart, StackedBarChart, TrendChart, type StackSeries } from '@/components/charts'
+import { ChartCard, DonutChart, StackedBarChart, TrendChart, CHART_HEIGHT_TALL, type StackSeries } from '@/components/charts'
+import { EmployeeSnapshotTable } from '@/components/common/EmployeeSnapshotTable'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useFilters } from '@/hooks/useFilters'
 import { dashboardApi, employeeApi } from '@/services/api'
-import { cn, fmtDate } from '@/lib/utils'
+import { fmtDate } from '@/lib/utils'
 import { FEATURES } from '@/lib/features'
 import type { EmployeeRow } from '@/types'
 
@@ -31,47 +30,18 @@ export function employeeColumns(includeProject = true): ColumnDef<EmployeeRow, u
     if (FEATURES.applications) cols.push({ accessorKey: 'application', header: 'Application', cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span> })
   }
   cols.push(
-    num('reports', 'Reports'),
-    num('total_activities', 'Activities'),
     num('unique_tickets', 'Tickets'),
     num('completed', 'Completed', 'text-green-600 font-medium'),
     num('in_progress', 'In progress', 'text-blue-600'),
     num('pending', 'Pending', 'text-orange-600'),
     num('blocked', 'Blocked', 'text-red-600 font-medium'),
-    num('analysis', 'Analysis'),
     num('development', 'Dev'),
     num('testing', 'Test'),
     num('dev_deployed', 'Dev deployed'),
-    num('production_releases', 'Prod releases'),
-    { accessorKey: 'production_status', header: 'Prod status', cell: ({ getValue }) => (getValue() ? <Badge variant="outline">{getValue() as string}</Badge> : <span className="text-muted-foreground">ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â</span>) },
+    num('production_released', 'Prod deployed'),
     { accessorKey: 'last_report_date', header: 'Last report', cell: ({ getValue }) => <span className="whitespace-nowrap text-xs">{fmtDate(getValue() as string)}</span> },
   )
   return cols
-}
-
-export function statusColumns(): ColumnDef<EmployeeRow, unknown>[] {
-  const num = (key: keyof EmployeeRow, header: string, cls?: string): ColumnDef<EmployeeRow, unknown> => ({
-    accessorKey: key,
-    header,
-    cell: ({ getValue }) => <span className={cn('tabular-nums', cls, (getValue() as number) === 0 && 'text-muted-foreground/50')}>{getValue() as number}</span>,
-  })
-  return [
-    { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <span className="font-medium whitespace-nowrap">{getValue() as string}</span> },
-    { accessorKey: 'project', header: 'Project / Team', cell: ({ getValue }) => <span className="text-xs">{getValue() as string}</span> },
-    num('unique_tickets', 'Assigned', 'font-medium'),
-    num('completed', 'Completed', 'text-green-600 font-medium'),
-    num('development_tickets', 'In development', 'text-blue-600'),
-    num('code_review', 'Code review', 'text-indigo-600'),
-    num('testing_tickets', 'Testing / QA', 'text-purple-600'),
-    num('ready_for_deployment', 'Ready to deploy', 'text-teal-600'),
-    num('backlog', 'Backlog'),
-    num('on_hold', 'On hold', 'text-yellow-600'),
-    num('blocked', 'Blocked', 'text-red-600 font-medium'),
-    num('dev_deployed', 'Dev deployed'),
-    num('production_released', 'Prod deployed'),
-    num('total_activities', 'Activities'),
-    { accessorKey: 'last_report_date', header: 'Last update', cell: ({ getValue }) => <span className="whitespace-nowrap text-xs">{fmtDate(getValue() as string)}</span> },
-  ]
 }
 
 /** Ticket-status series used by the employee charts (unique tickets by latest status). */
@@ -92,13 +62,10 @@ export default function EmployeesPage() {
   const q = useQuery({ queryKey: ['employees', queryString], queryFn: () => employeeApi.list(queryString), placeholderData: (p) => p })
   const team = useQuery({ queryKey: ['team', queryString], queryFn: () => dashboardApi.team(queryString), placeholderData: (p) => p })
   const [view, setView] = useState<'status' | 'detail'>('status')
-  const statusCols = useMemo(() => statusColumns(), [])
-  const detailCols = useMemo(() => employeeColumns(), [])
   const qs = queryString ? `?${queryString}` : ''
   const go = (n: string) => nav(`/employees/${encodeURIComponent(n)}${qs}`)
   const d = q.data
   const rows = d?.items ?? []
-  const assignedVsDone = useMemo(() => rows.map((r) => ({ name: r.employee, assigned: r.unique_tickets, completed: r.completed, in_progress: r.in_progress })).sort((a, b) => b.assigned - a.assigned), [rows])
   const totals = useMemo(() => {
     const sum = (k: keyof EmployeeRow) => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0)
     return { assigned: sum('unique_tickets'), completed: sum('completed'), in_progress: sum('in_progress'), code_review: sum('code_review'), testing: sum('testing_tickets'), backlog: sum('backlog'), on_hold: sum('on_hold'), blocked: sum('blocked'), dev: sum('dev_deployed'), prod: sum('production_released') }
@@ -122,32 +89,27 @@ export default function EmployeesPage() {
             <KpiCard label="People active" value={rows.length} icon={<Users className="h-4 w-4" />} tone="grey" compact sub={d.inactive.length ? `${d.inactive.length} with no activity` : undefined} />
             <KpiCard label="Assigned tickets" value={totals.assigned} icon={<Ticket className="h-4 w-4" />} tone="blue" compact hint="Unique tickets worked on in the period, summed per person (a shared ticket counts for each person)." />
             <KpiCard label="Completed" value={totals.completed} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" compact onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />
-            <KpiCard label="In progress" value={totals.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact sub={`${totals.code_review} review Ã‚Â· ${totals.testing} testing`} />
+            <KpiCard label="In progress" value={totals.in_progress} icon={<Activity className="h-4 w-4" />} tone="blue" compact sub={`${totals.code_review} review | ${totals.testing} testing`} />
             <KpiCard label="Backlog / on hold" value={totals.backlog + totals.on_hold} icon={<Hourglass className="h-4 w-4" />} tone="orange" compact sub={`${totals.on_hold} on hold`} />
             <KpiCard label="Blocked" value={totals.blocked} icon={<AlertOctagon className="h-4 w-4" />} tone="red" compact onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
           </KpiGrid>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <ChartCard title="Assigned vs completed" description="Unique tickets per person: assigned, completed and still in progress." className="lg:col-span-2">
-              <GroupedBarChart data={assignedVsDone.slice(0, 20)} series={[{ key: 'assigned', label: 'Assigned', color: 'grey' }, { key: 'completed', label: 'Completed', color: 'green' }, { key: 'in_progress', label: 'In progress', color: 'blue' }]} height={Math.max(260, Math.min(assignedVsDone.length, 20) * 18 + 120)} />
-            </ChartCard>
-            <ChartCard title="Ticket status (all selected people)" description="Unique tickets by latest status.">
+            <ChartCard title="Ticket status (all selected people)" description="Unique tickets by latest status. Click to filter." height={CHART_HEIGHT_TALL}>
               {team.data ? <DonutChart data={team.data.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" /> : <LoadingState rows={1} />}
             </ChartCard>
+            <ChartCard title="Work status by employee" description="Tickets per person by latest status, sorted by total. Click a bar to open the employee." className="lg:col-span-2" height={CHART_HEIGHT_TALL}>
+              <StackedBarChart data={rows.map((r) => ({ name: r.employee, ...Object.fromEntries(EMP_STATUS_SERIES.map((s) => [s.key, Number(r[s.key as keyof EmployeeRow] ?? 0)])) }))} series={EMP_STATUS_SERIES} onSelect={go} max={40} />
+            </ChartCard>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Work status by employee" description="Completed, in development, code review, testing, ready, backlog, on hold, blocked.">
-              <StackedBarChart data={rows.map((r) => ({ name: r.employee, ...Object.fromEntries(EMP_STATUS_SERIES.map((s) => [s.key, Number(r[s.key as keyof EmployeeRow] ?? 0)])) }))} series={EMP_STATUS_SERIES} onSelect={go} max={30} />
-            </ChartCard>
-            <ChartCard title="Deployments by employee" description="Dev deployments (activity rows) and production releases deployed.">
-              <GroupedBarChart data={rows.map((r) => ({ name: r.employee, dev: r.dev_deployed, prod: r.production_released })).filter((r) => Number(r.dev) + Number(r.prod) > 0)} series={[{ key: 'dev', label: 'Dev deployed', color: 'teal' }, { key: 'prod', label: 'Prod deployed', color: 'purple' }]} />
-            </ChartCard>
-          </div>
+          <ChartCard title="Delivery and deployment by employee" description="Per person, left to right: tickets assigned, completed and in progress, what reached dev and production, and overall progress (completed counts fully, in progress counts half; bar length = assigned). Click a row to open the employee." height="auto">
+            <EmployeeSnapshotTable variant="flow" rows={rows} onRow={go} pageSize={15} />
+          </ChartCard>
 
           {team.data && (
-            <ChartCard title="Completion trend" description="Completed tickets and activities per day across the selected people.">
-              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'activities', label: 'Activities', color: '#2563eb', dashed: true }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
+            <ChartCard title="Completion trend" description="Completed tickets and open backlog per day across the selected people.">
+              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'backlog', label: 'Open backlog', color: 'orange', dashed: true }]} />
             </ChartCard>
           )}
 
@@ -155,7 +117,7 @@ export default function EmployeesPage() {
             <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
               <div>
                 <CardTitle>Employees with activity in period ({rows.length})</CardTitle>
-                <CardDescription>Unique tickets per person by latest status. Click a row to open the individual dashboard.</CardDescription>
+                <CardDescription>Unique tickets per person by latest status; the Work detail view adds work-type and deployment counts. Click a row to open the individual dashboard.</CardDescription>
               </div>
               <div className="flex items-center gap-1 rounded-md border p-0.5 text-xs">
                 <Button size="sm" variant={view === 'status' ? 'default' : 'ghost'} className="h-7" onClick={() => setView('status')}>Ticket status</Button>
@@ -163,7 +125,7 @@ export default function EmployeesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <DataTable key={view} data={rows} columns={view === 'status' ? statusCols : detailCols} onRowClick={(r) => go(r.employee)} exportName="employee-performance" dense initialSorting={[{ id: view === 'status' ? 'unique_tickets' : 'completed', desc: true }]} searchPlaceholder="Search employees…" />
+              <EmployeeSnapshotTable key={view} variant={view === 'status' ? 'status' : 'detail'} rows={rows} onRow={go} pageSize={15} />
             </CardContent>
           </Card>
           {d.inactive.length > 0 && (

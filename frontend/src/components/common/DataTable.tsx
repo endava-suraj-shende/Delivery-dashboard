@@ -28,6 +28,9 @@ export interface DataTableProps<T> {
   toolbar?: ReactNode
   exportName?: string
   dense?: boolean
+  compact?: boolean
+  /** Fluid layout: columns share the available width and content truncates instead of causing horizontal scroll. */
+  fluid?: boolean
   initialSorting?: SortingState
   rowClassName?: (row: T) => string | undefined
   columnFilters?: { id: string; label: string; options: { value: string; label: string }[] }[]
@@ -38,7 +41,7 @@ export interface DataTableProps<T> {
 export function DataTable<T>({
   data,
   columns,
-  searchPlaceholder = 'Search…',
+  searchPlaceholder = 'Search',
   pageSize = 25,
   onRowClick,
   emptyTitle,
@@ -46,6 +49,8 @@ export function DataTable<T>({
   toolbar,
   exportName,
   dense,
+  compact,
+  fluid,
   initialSorting = [],
   rowClassName,
   columnFilters: filterDefs,
@@ -134,9 +139,9 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <div className={cn('overflow-auto rounded-md border', maxHeight)} style={maxHeight ? undefined : undefined}>
-        <table className="w-full caption-bottom text-sm">
-          <thead className={cn('bg-muted/60', stickyHeader && 'sticky top-0 z-10')}>
+      <div className={cn('overflow-auto rounded-lg border shadow-sm', maxHeight)}>
+        <table className={cn('w-full caption-bottom text-sm', fluid && 'table-fixed')}>
+          <thead className={cn('bg-muted/70 backdrop-blur', stickyHeader && 'sticky top-0 z-10')}>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b">
                 {hg.headers.map((h) => {
@@ -145,13 +150,13 @@ export function DataTable<T>({
                   return (
                     <th
                       key={h.id}
-                      style={{ width: h.getSize() !== 150 ? h.getSize() : undefined }}
-                      className={cn('h-9 px-3 text-left align-middle text-xs font-semibold text-muted-foreground whitespace-nowrap', canSort && 'cursor-pointer select-none hover:text-foreground')}
+                      style={{ width: fluid ? `${(100 * h.getSize()) / table.getTotalSize()}%` : h.getSize() !== 150 ? h.getSize() : undefined }}
+                      className={cn('h-10 align-middle text-[11px]', compact ? 'px-2' : 'px-3', fluid ? 'whitespace-normal py-1.5 leading-tight align-bottom' : '', ' font-semibold uppercase tracking-wide text-muted-foreground whitespace-nowrap border-b-2 border-border', (h.column.columnDef.meta as { align?: string } | undefined)?.align === 'right' ? 'text-right' : 'text-left', canSort && 'cursor-pointer select-none hover:text-foreground', sorted && 'text-foreground')}
                       onClick={canSort ? h.column.getToggleSortingHandler() : undefined}
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
-                        {canSort && (sorted === 'asc' ? <ArrowUp className="h-3 w-3" /> : sorted === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUpDown className="h-3 w-3 opacity-40" />)}
+                      <span className={cn('inline-flex items-center gap-1', fluid && 'max-w-full flex-nowrap', fluid && (h.column.columnDef.meta as { align?: string } | undefined)?.align === 'right' && 'justify-end')}>
+                        {h.isPlaceholder ? null : <span className={cn(fluid && 'min-w-0 truncate')} title={fluid && typeof h.column.columnDef.header === 'string' ? h.column.columnDef.header : undefined}>{flexRender(h.column.columnDef.header, h.getContext())}</span>}
+                        {canSort && (sorted === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : sorted === 'desc' ? <ArrowDown className="h-3 w-3 shrink-0" /> : fluid ? null : <ArrowUpDown className="h-3 w-3 opacity-40" />)}
                       </span>
                     </th>
                   )
@@ -170,11 +175,11 @@ export function DataTable<T>({
               rows.map((row: Row<T>) => (
                 <tr
                   key={row.id}
-                  className={cn('border-b transition-colors hover:bg-muted/40', onRowClick && 'cursor-pointer', rowClassName?.(row.original))}
+                  className={cn('border-b border-border/60 transition-colors odd:bg-background even:bg-muted/20 hover:bg-primary/[0.06]', onRowClick && 'cursor-pointer', rowClassName?.(row.original))}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={cn('px-3 align-top', dense ? 'py-1.5 text-xs' : 'py-2 text-sm')}>
+                    <td key={cell.id} className={cn('align-middle', compact ? 'px-2' : 'px-3', dense ? 'py-2 text-xs' : 'py-2.5 text-sm', (cell.column.columnDef.meta as { align?: string } | undefined)?.align === 'right' && 'text-right')}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

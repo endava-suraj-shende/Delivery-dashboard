@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Children, type ReactNode } from 'react'
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { HelpTip } from '@/components/ui/primitives'
@@ -51,7 +51,7 @@ export function KpiCard({ label, value, icon, tone = 'default', hint, previous, 
         <div className="min-w-0">
           <p className={cn('truncate font-medium text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>{label}</p>
           <p className={cn('mt-1 font-semibold tracking-tight tabular-nums', compact ? 'text-xl' : 'text-2xl')}>
-            {typeof value === 'number' ? fmtNum(value, 1) : (value ?? '–')}
+            {typeof value === 'number' ? fmtNum(value, 1) : (value ?? '-')}
             {suffix && <span className="ml-0.5 text-sm font-normal text-muted-foreground">{suffix}</span>}
           </p>
           {sub && <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{sub}</p>}
@@ -70,7 +70,10 @@ export function KpiCard({ label, value, icon, tone = 'default', hint, previous, 
   return hint ? <HelpTip text={hint}>{body}</HelpTip> : body
 }
 
-export function KpiGrid({ children, cols = 5 }: { children: ReactNode; cols?: 4 | 5 | 6 }) {
-  const c = { 4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5', 6: 'lg:grid-cols-6' }[cols]
+export function KpiGrid({ children, cols }: { children: ReactNode; cols?: 4 | 5 | 6 }) {
+  // Balance the tiles across rows so the last row is never half empty (e.g. 10 tiles -> 5 + 5, not 6 + 4).
+  const n = Children.toArray(children).filter(Boolean).length
+  const auto = n <= 6 ? Math.max(n, 2) : n <= 8 ? 4 : n <= 10 ? 5 : 6
+  const c = { 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4', 5: 'lg:grid-cols-5', 6: 'lg:grid-cols-6' }[cols && n <= cols ? cols : auto]
   return <div className={cn('grid grid-cols-2 gap-3 sm:grid-cols-3', c)}>{children}</div>
 }

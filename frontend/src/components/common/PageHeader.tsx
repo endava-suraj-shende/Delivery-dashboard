@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarRange, ChevronRight, Filter, Printer, X, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -55,7 +55,7 @@ export function PeriodBadge({ period }: { period: Period }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {sprint.length ? (
-        <Badge variant="info" className="gap-1" title="A sprint is a period of its own â€” the date range is not applied while a sprint is selected.">
+        <Badge variant="info" className="gap-1" title="A sprint is a period of its own - the date range is not applied while a sprint is selected.">
           <Zap className="h-3 w-3" /> Sprint: {sprint.join(', ')}
         </Badge>
       ) : (
@@ -64,7 +64,7 @@ export function PeriodBadge({ period }: { period: Period }) {
         </Badge>
       )}
       <span>
-        {!sprint.length && period.days > 0 && `${period.days} days Â· `}
+        {!sprint.length && period.days > 0 && `${period.days} days | `}
         {period.report_count} {period.report_count === 1 ? 'report' : 'reports'}
       </span>
     </div>
@@ -87,7 +87,7 @@ export function DateRangePicker() {
     setStart(effectiveRange[0] ?? '')
     setEnd(effectiveRange[1] ?? '')
   }, [effectiveRange])
-  const label = filters.preset === 'custom' ? `${fmtDate(effectiveRange[0])} â€“ ${fmtDate(effectiveRange[1])}` : PRESET_LABELS[filters.preset]
+  const label = filters.preset === 'custom' ? `${fmtDate(effectiveRange[0])} - ${fmtDate(effectiveRange[1])}` : PRESET_LABELS[filters.preset]
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -143,15 +143,15 @@ export function GlobalFilterBar({ showStatus = true, showDeployment = true, comp
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <DateRangePicker />
-        <MultiSelect label="Project" options={opt(dims?.projects)} value={filters.project} onChange={set('project')} width="w-[190px]" />
-        <MultiSelect label="Employee" options={opt(dims?.employees)} value={filters.employee} onChange={set('employee')} width="w-[190px]" />
-        {FEATURES.applications && <MultiSelect label="Application" options={opt(dims?.applications)} value={filters.application} onChange={set('application')} width="w-[190px]" />}
-        {!compact && <MultiSelect label="Board" options={opt(dims?.jira_boards)} value={filters.jira_board} onChange={set('jira_board')} width="w-[170px]" single />}
-        {(dims?.sprints?.length ?? 0) > 0 && <MultiSelect label="Sprint" options={opt(dims?.sprints)} value={filters.sprint} onChange={set('sprint')} width="w-[170px]" />}
-        {showStatus && <MultiSelect label="Status" options={cat(dims?.work_status)} value={filters.status} onChange={set('status')} width="w-[160px]" />}
-        {showStatus && !compact && <MultiSelect label="Type" options={cat(dims?.work_type)} value={filters.work_type} onChange={set('work_type')} width="w-[150px]" />}
-        {showDeployment && <MultiSelect label="Dev deploy" options={cat(dims?.dev_deployment)} value={filters.dev_deployment} onChange={set('dev_deployment')} width="w-[170px]" />}
-        {showDeployment && <MultiSelect label="Prod deploy" options={cat(dims?.prod_deployment)} value={filters.prod_deployment} onChange={set('prod_deployment')} width="w-[170px]" />}
+        <MultiSelect label="Project" options={opt(dims?.projects)} value={filters.project} onChange={set('project')} />
+        <MultiSelect label="Employee" options={opt(dims?.employees)} value={filters.employee} onChange={set('employee')} />
+        {FEATURES.applications && <MultiSelect label="Application" options={opt(dims?.applications)} value={filters.application} onChange={set('application')} />}
+        {!compact && <MultiSelect label="Board" options={opt(dims?.jira_boards)} value={filters.jira_board} onChange={set('jira_board')} single />}
+        {(dims?.sprints?.length ?? 0) > 0 && <MultiSelect label="Sprint" options={opt(dims?.sprints)} value={filters.sprint} onChange={set('sprint')} />}
+        {showStatus && <MultiSelect label="Status" options={cat(dims?.work_status)} value={filters.status} onChange={set('status')} />}
+        {showStatus && !compact && <MultiSelect label="Type" options={cat(dims?.work_type)} value={filters.work_type} onChange={set('work_type')} />}
+        {showDeployment && <MultiSelect label="Dev deploy" options={cat(dims?.dev_deployment)} value={filters.dev_deployment} onChange={set('dev_deployment')} />}
+        {showDeployment && <MultiSelect label="Prod deploy" options={cat(dims?.prod_deployment)} value={filters.prod_deployment} onChange={set('prod_deployment')} />}
         {activeChips.length > 0 && (
           <Button variant="ghost" size="sm" onClick={clearAll}>
             <X /> Clear all filters

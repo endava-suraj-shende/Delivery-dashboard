@@ -1,8 +1,9 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, AlertOctagon, CheckCircle2, Clock, Hourglass, Rocket, ServerCog, Ticket, Users, UserCheck, ShieldAlert, Plug } from 'lucide-react'
+import { Activity, AlertOctagon, BarChart3, CheckCircle2, Clock, Hourglass, Rocket, ServerCog, Table as TableIcon, Ticket, Users, UserCheck, ShieldAlert, Plug } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, NamedBarChart, StackedBarChart, TrendChart, TrendBarChart, STATUS_SERIES, TYPE_SERIES } from '@/components/charts'
+import { EmployeeSnapshotTable } from '@/components/common/EmployeeSnapshotTable'
+import { ChartCard, DonutChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { InsightsPanel } from '@/components/common/InsightsPanel'
 import { ErrorState, LoadingState } from '@/components/common/States'
@@ -21,6 +22,8 @@ export default function ExecutivePage() {
   const { toggleValue, filters, queryString, setList } = useFilters()
   const nav = useNavigate()
   const [ticket, setTicket] = useState<string | null>(null)
+  const [empView, setEmpView] = useState<'table' | 'chart'>('table')
+  const [openView, setOpenView] = useState<'table' | 'chart'>('table')
   const qs = queryString ? `?${queryString}` : ''
 
   const goEmployee = (name: string) => nav(`/employees/${encodeURIComponent(name)}${qs}`)
@@ -53,13 +56,13 @@ export default function ExecutivePage() {
             <KpiCard label="Pending / on hold" value={q.data.kpis.pending_tickets} icon={<Hourglass className="h-4 w-4" />} tone="orange" previous={q.data.previous_kpis?.pending_tickets} onClick={() => setList('status', ['pending', 'on_hold'])} />
             <KpiCard label="Blocked" value={q.data.kpis.blocked_tickets} icon={<AlertOctagon className="h-4 w-4" />} tone="red" previous={q.data.previous_kpis?.blocked_tickets} onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
             <KpiCard label="Dev deployments" value={q.data.kpis.dev_deployed} sub={`${q.data.kpis.dev_pending} pending`} icon={<ServerCog className="h-4 w-4" />} tone="teal" previous={q.data.previous_kpis?.dev_deployed} onClick={() => nav(`/deployments/dev${qs}`)} />
-            <KpiCard label="Production releases" value={q.data.kpis.production_releases} sub={`${q.data.kpis.production_released} deployed Â· ${q.data.kpis.production_pending} pending`} icon={<Rocket className="h-4 w-4" />} tone="purple" previous={q.data.previous_kpis?.production_releases} onClick={() => nav(`/deployments/production${qs}`)} />
-            <KpiCard label="Prod success rate" value={q.data.kpis.production_success_rate} suffix="%" icon={<Clock className="h-4 w-4" />} tone="green" hint="Released Ã· production release records in period." />
+            <KpiCard label="Production releases" value={q.data.kpis.production_releases} sub={`${q.data.kpis.production_released} deployed | ${q.data.kpis.production_pending} pending`} icon={<Rocket className="h-4 w-4" />} tone="purple" previous={q.data.previous_kpis?.production_releases} onClick={() => nav(`/deployments/production${qs}`)} />
+            <KpiCard label="Prod success rate" value={q.data.kpis.production_success_rate} suffix="%" icon={<Clock className="h-4 w-4" />} tone="green" hint="Released / production release records in period." />
             {q.data.jira && (
               <KpiCard
                 label="Excel vs Jira"
                 value={q.data.jira.errors + q.data.jira.warnings}
-                sub={`${q.data.jira.matched}/${q.data.jira.compared} match Â· ${q.data.jira.not_found} not found Â· ${q.data.jira.missing_from_excel} missing in sheets`}
+                sub={`${q.data.jira.matched}/${q.data.jira.compared} match | ${q.data.jira.not_found} not found | ${q.data.jira.missing_from_excel} missing in sheets`}
                 icon={<Plug className="h-4 w-4" />}
                 tone={q.data.jira.errors ? 'red' : q.data.jira.warnings ? 'orange' : 'green'}
                 hint={`Discrepancies between the bi-weekly sheets and live Jira. Last sync ${q.data.jira.last_sync ? new Date(q.data.jira.last_sync).toLocaleString() : 'never'}.`}
@@ -68,54 +71,69 @@ export default function ExecutivePage() {
             )}
           </KpiGrid>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <ChartCard title="Overall work status" description="Unique tickets by latest status. Click to filter.">
               <DonutChart data={q.data.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
             </ChartCard>
-            <ChartCard title="Employee-wise performance" description="Ticket status per employee. Click a bar to open the employee." className="lg:col-span-2">
-              <StackedBarChart data={q.data.charts.status_by_employee} series={STATUS_SERIES} onSelect={goEmployee} max={25} />
+            <ChartCard title="Work type split" description="Share of work by type. Click to filter.">
+              <DonutChart data={q.data.charts.work_type} onSelect={(k) => toggleValue('work_type', k)} selected={filters.work_type} centerLabel="work rows" />
             </ChartCard>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Project-wise performance" description="Ticket status per project. Click to open the project.">
-              <StackedBarChart data={q.data.charts.status_by_project} series={STATUS_SERIES} onSelect={goProject} />
+            <ChartCard title="Dev deployment summary" description="Work rows by dev deployment status.">
+              <DonutChart data={q.data.charts.dev_deployment} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="work rows" />
             </ChartCard>
-            <ChartCard title="Daily completed tickets & work activity" description="Per report date. Completed = first report date the ticket was marked complete.">
-              <TrendChart data={q.data.charts.trend} series={[{ key: 'activities', label: 'Activities', color: '#2563eb' }, { key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'unique_tickets', label: 'Unique tickets', color: '#7c3aed', dashed: true }]} />
-            </ChartCard>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-3">
-            <ChartCard title="Development vs Analysis vs Testing" description="Activity rows by work type.">
-              <TrendBarChart data={q.data.charts.trend} series={[{ key: 'development', label: 'Development', color: '#2563eb' }, { key: 'analysis', label: 'Analysis', color: '#f97316' }, { key: 'testing', label: 'Testing', color: '#7c3aed' }, { key: 'deployment', label: 'Deployment', color: '#16a34a' }, { key: 'bug_fix', label: 'Bug fix', color: '#dc2626' }]} />
-            </ChartCard>
-            <ChartCard title="Dev deployment summary" description="Activity rows by Dev Deployment Status.">
-              <DonutChart data={q.data.charts.dev_deployment} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="activities" />
-            </ChartCard>
-            <ChartCard title="Production release summary" description="Production Deployment Summary rows by status.">
+            <ChartCard title="Production release summary" description="Release records by status.">
               <DonutChart data={q.data.charts.prod_deployment} onSelect={(k) => toggleValue('prod_deployment', k)} selected={filters.prod_deployment} centerLabel="releases" />
             </ChartCard>
           </div>
 
+          <ChartCard
+            title="Employee-wise performance"
+            description={empView === 'table' ? 'Exact counts per person; red cells and tinted rows mark blocked work. Progress = completed (green) and in progress (blue) share of assigned tickets. Click a row to open the employee.' : 'Ticket status per employee, sorted by assigned tickets. Click a bar to open the employee.'}
+            height={empView === 'table' ? 'auto' : CHART_HEIGHT_TALL}
+            action={
+              <div className="flex items-center gap-0.5 rounded-md border p-0.5 text-xs">
+                <Button size="sm" variant={empView === 'table' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setEmpView('table')}><TableIcon /> Table</Button>
+                <Button size="sm" variant={empView === 'chart' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setEmpView('chart')}><BarChart3 /> Chart</Button>
+              </div>
+            }
+          >
+            {empView === 'table' ? <EmployeeSnapshotTable rows={q.data.employees} onRow={goEmployee} /> : <StackedBarChart data={q.data.charts.status_by_employee} series={STATUS_SERIES} onSelect={goEmployee} max={40} />}
+          </ChartCard>
+
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Project-wise blocked & pending work" description="Blocked, pending and on-hold tickets per project.">
-              <StackedBarChart data={q.data.charts.status_by_project.filter((p) => Number(p.blocked) + Number(p.pending) + Number(p.on_hold) + Number(p.analysis) > 0)} series={[{ key: 'blocked', label: 'Blocked', color: 'red' }, { key: 'pending', label: 'Pending', color: 'orange' }, { key: 'on_hold', label: 'On hold', color: 'amber' }, { key: 'analysis', label: 'Analysis', color: 'purple' }]} onSelect={goProject} />
+            <ChartCard title="Project-wise performance" description="Ticket status per project. Click to open the project." height={CHART_HEIGHT_TALL}>
+              <StackedBarChart data={q.data.charts.status_by_project} series={STATUS_SERIES} onSelect={goProject} />
             </ChartCard>
-            <ChartCard title="Employee-wise pending & in-progress work" description="Tickets not yet completed per employee.">
-              <StackedBarChart data={q.data.charts.status_by_employee.filter((e) => Number(e.total) - Number(e.completed_total) > 0).map((e) => ({ ...e, name: e.name }))} series={[{ key: 'in_progress', label: 'In progress', color: 'blue' }, { key: 'development', label: 'Development', color: 'blue' }, { key: 'testing', label: 'Testing', color: 'purple' }, { key: 'pending', label: 'Pending', color: 'orange' }, { key: 'on_hold', label: 'On hold', color: 'amber' }, { key: 'blocked', label: 'Blocked', color: 'red' }]} onSelect={goEmployee} />
+            <ChartCard title="Daily completed tickets" description="Per report date. Completed = first report date the ticket was marked complete." height={CHART_HEIGHT_TALL}>
+              <TrendChart data={q.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'unique_tickets', label: 'Tickets worked on', color: 'purple', dashed: true }]} />
             </ChartCard>
           </div>
+
+          <ChartCard
+            title="Employee-wise pending & in-progress work"
+            description={openView === 'table' ? 'Open tickets per person by stage; red marks blocked work. Click a row to open the employee.' : 'Tickets not yet completed per employee. Click a bar to open the employee.'}
+            height={openView === 'table' ? 'auto' : CHART_HEIGHT_TALL}
+            action={
+              <div className="flex items-center gap-0.5 rounded-md border p-0.5 text-xs">
+                <Button size="sm" variant={openView === 'table' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setOpenView('table')}><TableIcon /> Table</Button>
+                <Button size="sm" variant={openView === 'chart' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setOpenView('chart')}><BarChart3 /> Chart</Button>
+              </div>
+            }
+          >
+            {openView === 'table' ? <EmployeeSnapshotTable variant="open" rows={q.data.employees.filter((e) => e.in_progress + e.pending + e.blocked > 0)} onRow={goEmployee} pageSize={10} /> : (
+            <StackedBarChart data={q.data.charts.status_by_employee.filter((e) => Number(e.total) - Number(e.completed_total) > 0)} series={[{ key: 'in_progress', label: 'In progress', color: 'blue' }, { key: 'development', label: 'Development', color: 'blue' }, { key: 'code_review', label: 'Code review', color: 'indigo' }, { key: 'testing', label: 'Testing', color: 'purple' }, { key: 'pending', label: 'Pending', color: 'orange' }, { key: 'on_hold', label: 'On hold', color: 'amber' }, { key: 'blocked', label: 'Blocked', color: 'red' }]} onSelect={goEmployee} max={40} />
+            )}
+          </ChartCard>
 
           {(FEATURES.applications || FEATURES.workTypeByEmployee || FEATURES.dataQualityCard) && (
           <div className={cn('grid gap-4', [FEATURES.applications, FEATURES.workTypeByEmployee, FEATURES.dataQualityCard].filter(Boolean).length > 1 ? 'lg:grid-cols-3' : 'lg:grid-cols-1')}>
             {FEATURES.applications && (
-              <ChartCard title="Workload by application" description="Activity rows per application.">
+              <ChartCard title="Workload by application" description="Work rows per application.">
                 <NamedBarChart data={q.data.charts.activities_by_application} onSelect={(n) => toggleValue('application', n)} color="#0d9488" valueLabel="Activities" />
               </ChartCard>
             )}
             {FEATURES.workTypeByEmployee && (
-              <ChartCard title="Work type by employee" description="Activity rows by type.">
+              <ChartCard title="Work type by employee" description="Work rows by type.">
                 <StackedBarChart data={q.data.charts.type_by_employee} series={TYPE_SERIES} onSelect={goEmployee} max={25} />
               </ChartCard>
             )}

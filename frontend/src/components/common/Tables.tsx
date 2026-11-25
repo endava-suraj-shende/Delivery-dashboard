@@ -10,7 +10,7 @@ import { LoadingState, ErrorState } from '@/components/common/States'
 import { useDimensions } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { jiraApi } from '@/services/api'
-import { fmtDate, truncate } from '@/lib/utils'
+import { cn, fmtDate, truncate } from '@/lib/utils'
 import { FEATURES } from '@/lib/features'
 
 /** Drop application-wise columns while that feature is hidden. */
@@ -39,24 +39,19 @@ export function CategoryCell({ dim, value, raw }: { dim: 'work_status' | 'work_t
   const meta = lookup[dim]?.[value]
   const label = meta?.label ?? value
   const differs = raw && raw.toLowerCase() !== label.toLowerCase()
+  // Show the mapped category only; the original source value stays available on hover.
   return (
-    <StatusBadge color={meta?.color} title={raw ? `Excel value: ${raw}` : undefined}>
-      {raw && differs ? (
-        <span>
-          {raw} <span className="opacity-60">→ {label}</span>
-        </span>
-      ) : (
-        (raw ?? label)
-      )}
+    <StatusBadge color={meta?.color} title={differs ? `Source value: ${raw}` : undefined}>
+      <span className="whitespace-nowrap">{label}</span>
     </StatusBadge>
   )
 }
 
-export function TicketLink({ id, link, onOpen }: { id: string | null; link?: string | null; onOpen?: (id: string) => void }) {
-  if (!id) return <span className="text-xs text-muted-foreground">—</span>
+export function TicketLink({ id, link, onOpen, chip }: { id: string | null; link?: string | null; onOpen?: (id: string) => void; chip?: boolean }) {
+  if (!id) return <span className="text-xs text-muted-foreground">-</span>
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <button className="font-medium text-primary hover:underline" onClick={(e) => { e.stopPropagation(); onOpen?.(id) }}>
+      <button className={cn('font-medium text-primary hover:underline', chip && 'rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 font-mono text-[11px] hover:bg-primary/10 hover:no-underline')} onClick={(e) => { e.stopPropagation(); onOpen?.(id) }}>
         {id}
       </button>
       {link && (
@@ -68,11 +63,23 @@ export function TicketLink({ id, link, onOpen }: { id: string | null; link?: str
   )
 }
 
-export function EmployeeLink({ name }: { name: string | null }) {
+const AVATAR = ['bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500', 'bg-indigo-500', 'bg-orange-500']
+function avatarColor(name: string): string {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return AVATAR[h % AVATAR.length]
+}
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
+}
+
+export function EmployeeLink({ name, avatar }: { name: string | null; avatar?: boolean }) {
   const { queryString } = useFilters()
-  if (!name) return <span className="text-muted-foreground">—</span>
+  if (!name) return <span className="text-muted-foreground">-</span>
   return (
-    <Link to={`/employees/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="hover:underline whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+    <Link to={`/employees/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="inline-flex items-center gap-2 whitespace-nowrap font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+      {avatar && <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white', avatarColor(name))}>{initials(name)}</span>}
       {name}
     </Link>
   )
@@ -80,7 +87,7 @@ export function EmployeeLink({ name }: { name: string | null }) {
 
 export function ProjectLink({ name }: { name: string | null }) {
   const { queryString } = useFilters()
-  if (!name) return <span className="text-muted-foreground">—</span>
+  if (!name) return <span className="text-muted-foreground">-</span>
   return (
     <Link to={`/projects/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
       {name}
@@ -89,28 +96,29 @@ export function ProjectLink({ name }: { name: string | null }) {
 }
 
 // ------------------------------------------------------------------ activity table
-export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }: { items: Activity[]; onTicket?: (id: string) => void; hideEmployee?: boolean; pageSize?: number }) {
+export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25, hideColumns = [] }: { items: Activity[]; onTicket?: (id: string) => void; hideEmployee?: boolean; pageSize?: number; hideColumns?: string[] }) {
   const lookup = useCategoryLookup()
   const columns = useMemo<ColumnDef<Activity, unknown>[]>(() => {
     const cols: ColumnDef<Activity, unknown>[] = [
-      { accessorKey: 'report_date', header: 'Date', cell: ({ getValue }) => <span className="whitespace-nowrap">{fmtDate(getValue() as string)}</span>, size: 100 },
+      { accessorKey: 'report_date', header: 'Date', cell: ({ getValue }) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{fmtDate(getValue() as string)}</span>, size: 100 },
     ]
-    if (!hideEmployee) cols.push({ accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} /> })
+    if (!hideEmployee) cols.push({ accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} avatar /> })
     cols.push(
       { accessorKey: 'project', header: 'Project / Team', cell: ({ getValue }) => <ProjectLink name={getValue() as string} /> },
       { accessorKey: 'application', header: 'Application' },
-      { accessorKey: 'jira_board', header: 'Jira Board' },
-      { id: 'ticket', accessorFn: (r) => r.ticket_id ?? r.ticket_raw ?? '', header: 'Jira Ticket', cell: ({ row }) => (row.original.ticket_id ? <TicketLink id={row.original.ticket_id} link={row.original.ticket_link} onOpen={onTicket} /> : <span className="text-xs text-muted-foreground italic">{row.original.ticket_raw ?? 'no id'}</span>) },
+      { accessorKey: 'jira_board', header: 'Jira Board', cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{(getValue() as string) || '-'}</span> },
+      { id: 'ticket', accessorFn: (r) => r.ticket_id ?? r.ticket_raw ?? '', header: 'Jira Ticket', cell: ({ row }) => (row.original.ticket_id ? <TicketLink id={row.original.ticket_id} link={row.original.ticket_link} onOpen={onTicket} chip /> : <span className="text-xs text-muted-foreground italic">{row.original.ticket_raw ?? 'no id'}</span>) },
       { accessorKey: 'work_details', header: 'Work details', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 90)}</span>, size: 320 },
       { accessorKey: 'work_type', header: 'Type', cell: ({ row }) => <CategoryCell dim="work_type" value={row.original.work_type} raw={row.original.work_type_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'work_status', header: 'Work Status', cell: ({ row }) => <CategoryCell dim="work_status" value={row.original.work_status} raw={row.original.work_status_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'dev_deployment', header: 'Dev Deployment', cell: ({ row }) => <CategoryCell dim="dev_deployment" value={row.original.dev_deployment} raw={row.original.dev_deployment_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'prod_required', header: 'In Production?', cell: ({ row }) => <CategoryCell dim="prod_required" value={row.original.prod_required} raw={row.original.prod_required_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'comments', header: 'Additional notes', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 70)}</span>, size: 260 },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={row.original.file_name}>{truncate(row.original.file_name, 28)} · r{row.original.source_row}</span> },
+      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={row.original.file_name}>{truncate(row.original.file_name, 28)} | r{row.original.source_row}</span> },
     )
-    return withFeatures(cols)
-  }, [hideEmployee, onTicket])
+    const visible = hideColumns.length ? cols.filter((c) => !hideColumns.includes(('accessorKey' in c ? String(c.accessorKey) : c.id) ?? '')) : cols
+    return withFeatures(visible)
+  }, [hideEmployee, onTicket, hideColumns])
   const opts = (dim: keyof typeof lookup) => Object.values(lookup[dim]).map((c) => ({ value: c.key, label: c.label }))
   return (
     <DataTable
@@ -119,7 +127,7 @@ export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }
       pageSize={pageSize}
       dense
       exportName="activities"
-      searchPlaceholder="Search activities…"
+      searchPlaceholder="Search work items"
       initialSorting={[{ id: 'report_date', desc: true }]}
       columnFilters={[
         { id: 'work_status', label: 'Status', options: opts('work_status') },
@@ -160,7 +168,7 @@ export function TicketsTable({ items, onTicket, pageSize = 25 }: { items: Ticket
       pageSize={pageSize}
       dense
       exportName="tickets"
-      searchPlaceholder="Search by ticket id, text…"
+      searchPlaceholder="Search by ticket id or text"
       initialSorting={[{ id: 'last_seen', desc: true }]}
       columnFilters={[
         { id: 'work_status', label: 'Status', options: opts('work_status') },
@@ -177,15 +185,14 @@ export function ReleasesTable({ items, onTicket, pageSize = 25 }: { items: Relea
   const lookup = useCategoryLookup()
   const columns = useMemo<ColumnDef<Release, unknown>[]>(
     () => withFeatures<Release>([
-      { accessorKey: 'release_date', header: 'Release date', cell: ({ row }) => <span className="whitespace-nowrap" title={row.original.release_date_source === 'cell' ? 'From Production Release Date column' : 'No release date in Excel; using report date'}>{fmtDate(row.original.release_date)}{row.original.release_date_source !== 'cell' && <span className="ml-1 text-[10px] text-muted-foreground">(report)</span>}</span> },
-      { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} /> },
-      { accessorKey: 'project', header: 'Project', cell: ({ getValue }) => <ProjectLink name={getValue() as string} /> },
-      { accessorKey: 'application', header: 'Application' },
-      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '—'}</span>) },
-      { accessorKey: 'release_details', header: 'Release details', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 100)}</span>, size: 320 },
+      { accessorKey: 'release_date', header: 'Release date', cell: ({ row }) => <span className="whitespace-nowrap tabular-nums text-muted-foreground" title={row.original.release_date_source === 'cell' ? 'From Production Release Date column' : 'No release date recorded; using report date'}>{fmtDate(row.original.release_date)}{row.original.release_date_source !== 'cell' && <span className="ml-1 text-[10px]">(report)</span>}</span>, size: 110 },
+      { accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} avatar /> },
+      { accessorKey: 'project', header: 'Project', cell: ({ getValue }) => <span className="whitespace-nowrap"><ProjectLink name={getValue() as string} /></span> },
+      { accessorKey: 'application', header: 'Application', cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{(getValue() as string) || '-'}</span> },
+      { id: 'tickets', accessorFn: (r) => r.ticket_raw ?? '', header: 'Release tickets', cell: ({ row }) => (row.original.ticket_ids.length ? <span className="flex flex-wrap gap-1">{row.original.ticket_ids.map((t) => <TicketLink key={t} id={t} onOpen={onTicket} chip />)}</span> : <span className="text-xs italic text-muted-foreground">{row.original.ticket_raw ?? '-'}</span>) },
+      { accessorKey: 'release_details', header: 'Release details', cell: ({ getValue }) => <span className="line-clamp-2 max-w-[360px]" title={getValue() as string}>{getValue() as string}</span>, size: 360 },
       { accessorKey: 'prod_deployment', header: 'Production status', cell: ({ row }) => <CategoryCell dim="prod_deployment" value={row.original.prod_deployment} raw={row.original.prod_deployment_raw} />, filterFn: 'equalsString' },
-      { accessorKey: 'comments', header: 'Comments', cell: ({ getValue }) => truncate(getValue() as string, 60) },
-      { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 28)} · r{row.original.source_row}</span> },
+      { accessorKey: 'comments', header: 'Comments', cell: ({ getValue }) => <span className="line-clamp-2 max-w-[240px] text-muted-foreground" title={getValue() as string}>{(getValue() as string) || '-'}</span> },
     ]),
     [onTicket],
   )
@@ -196,7 +203,7 @@ export function ReleasesTable({ items, onTicket, pageSize = 25 }: { items: Relea
       pageSize={pageSize}
       dense
       exportName="production-releases"
-      searchPlaceholder="Search releases…"
+      searchPlaceholder="Search releases"
       initialSorting={[{ id: 'release_date', desc: true }]}
       columnFilters={[{ id: 'prod_deployment', label: 'Status', options: Object.values(lookup.prod_deployment).map((c) => ({ value: c.key, label: c.label })) }]}
       emptyTitle="No production release records in the selected period"
@@ -248,7 +255,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                 {(q.data.ticket.status_history ?? []).map((h, i) => (
                   <li key={i} className="mb-2">
                     <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-primary" />
-                    <span className="text-xs text-muted-foreground">{fmtDate(h.date)}</span> · <CategoryCell dim="work_status" value={h.status} raw={h.status_raw} /> <span className="text-xs text-muted-foreground">by {h.employee}</span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(h.date)}</span> | <CategoryCell dim="work_status" value={h.status} raw={h.status_raw} /> <span className="text-xs text-muted-foreground">by {h.employee}</span>
                   </li>
                 ))}
               </ol>
@@ -265,7 +272,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                       <CategoryCell dim="work_type" value={a.work_type} raw={a.work_type_raw} />
                       <CategoryCell dim="dev_deployment" value={a.dev_deployment} raw={a.dev_deployment_raw} />
                       <span className="ml-auto text-muted-foreground">
-                        {a.file_name} · row {a.source_row}
+                        {a.file_name} | row {a.source_row}
                       </span>
                     </div>
                     <p>{a.work_details}</p>
@@ -286,7 +293,7 @@ export function TicketDialog({ ticketId, onClose }: { ticketId: string | null; o
                         <span>{r.application}</span>
                         <CategoryCell dim="prod_deployment" value={r.prod_deployment} raw={r.prod_deployment_raw} />
                         <span className="ml-auto text-muted-foreground">
-                          {r.file_name} · row {r.source_row}
+                          {r.file_name} | row {r.source_row}
                         </span>
                       </div>
                       <p>{r.release_details}</p>
@@ -307,7 +314,7 @@ function Meta({ label, value }: { label: string; value: string | null | undefine
     <div>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="truncate text-sm" title={value ?? undefined}>
-        {value || '—'}
+        {value || '-'}
       </p>
     </div>
   )

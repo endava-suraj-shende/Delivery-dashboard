@@ -1,4 +1,4 @@
-﻿export interface CategoryPoint {
+export interface CategoryPoint {
   key: string
   label: string
   color: string
@@ -7,8 +7,8 @@
 
 export interface GroupedRow {
   name: string
-  total: number
-  [category: string]: string | number
+  total?: number
+  [category: string]: string | number | undefined
 }
 
 export interface NamedValue {

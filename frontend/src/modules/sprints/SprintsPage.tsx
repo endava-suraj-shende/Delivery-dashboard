@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, AlertOctagon, CheckCircle2, Hourglass, Rocket, Ticket, Users, Zap, Filter, X, SearchCheck } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, GroupedBarChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES } from '@/components/charts'
+import { ChartCard, DonutChart, GroupedBarChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/States'
 import { DataTable } from '@/components/common/DataTable'
@@ -30,7 +30,7 @@ const STATE_BADGE: Record<string, { label: string; variant: 'success' | 'info' |
 function sprintRange(s: SprintRow): string {
   if (!s.start_date) return 'no dates'
   const end = s.complete_date ?? s.end_date
-  return `${fmtDate(s.start_date, { day: '2-digit', month: 'short' })} – ${end ? fmtDate(end, { day: '2-digit', month: 'short' }) : 'open'}`
+  return `${fmtDate(s.start_date, { day: '2-digit', month: 'short' })} - ${end ? fmtDate(end, { day: '2-digit', month: 'short' }) : 'open'}`
 }
 
 function sprintColumns(): ColumnDef<SprintRow, unknown>[] {
@@ -46,18 +46,17 @@ function sprintColumns(): ColumnDef<SprintRow, unknown>[] {
       header: 'State',
       cell: ({ getValue }) => {
         const m = STATE_BADGE[(getValue() as string) ?? '']
-        return m ? <Badge variant={m.variant}>{m.label}</Badge> : <span className="text-muted-foreground">—</span>
+        return m ? <Badge variant={m.variant}>{m.label}</Badge> : <span className="text-muted-foreground">-</span>
       },
     },
     { accessorKey: 'start_date', header: 'Dates', cell: ({ row }) => <span className="whitespace-nowrap text-xs">{sprintRange(row.original)}</span> },
-    { accessorKey: 'board', header: 'Board', cell: ({ getValue }) => <span className="text-xs">{(getValue() as string) ?? '—'}</span> },
+    { accessorKey: 'board', header: 'Board', cell: ({ getValue }) => <span className="text-xs">{(getValue() as string) ?? '-'}</span> },
     num('tickets', 'Tickets'),
     num('completed', 'Completed', 'text-green-600 font-medium'),
     num('in_progress', 'In progress', 'text-blue-600'),
     num('pending', 'Pending', 'text-orange-600'),
     num('blocked', 'Blocked', 'text-red-600 font-medium'),
     num('analysis', 'Analysis'),
-    num('activities', 'Activities'),
     num('employees', 'People'),
     num('production_released', 'Prod deployed'),
     { accessorKey: 'completed_share', header: 'Done %', cell: ({ getValue }) => <span className="tabular-nums">{fmtPct(getValue() as number | null)}</span> },
@@ -78,10 +77,12 @@ export default function SprintsPage() {
   const list = useQuery({ queryKey: ['sprints', listQs], queryFn: () => sprintApi.list(listQs) })
   const [velocityView, setVelocityView] = useState<string>('last:10')
   const [velocityUnit, setVelocityUnit] = useState<'points' | 'tickets' | null>(null)
+  const [tableUnit, setTableUnit] = useState<'tickets' | 'points'>('tickets')
+  const [tableRange, setTableRange] = useState<number | 'all'>(10)
   const items = useMemo(() => list.data?.items ?? [], [list.data])
   const names = useMemo(() => new Set(items.map((s) => s.name)), [items])
   const requested = sp.get('selected') ?? filters.sprint[0] ?? null
-  // A sprint from another board stays in the URL after the filter changes — fall back to the active/first sprint of the new list.
+  // A sprint from another board stays in the URL after the filter changes - fall back to the active/first sprint of the new list.
   const selectedName = list.data ? (requested && names.has(requested) ? requested : list.data.active ?? items[0]?.name ?? null) : null
   useEffect(() => {
     if (list.data && selectedName && sp.get('selected') !== selectedName) {
@@ -115,7 +116,7 @@ export default function SprintsPage() {
         <>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {items.slice(0, 12).map((s) => {
-              const m = STATE_BADGE[s.state ?? ''] ?? { label: '—', variant: 'muted' as const }
+              const m = STATE_BADGE[s.state ?? ''] ?? { label: '-', variant: 'muted' as const }
               const isSel = s.name === selectedName
               return (
                 <button key={s.name} onClick={() => select(s.name)} className={cn('min-w-[200px] shrink-0 rounded-md border p-3 text-left text-sm transition hover:border-primary/50', isSel && 'border-primary bg-primary/5 ring-1 ring-primary')}>
@@ -123,13 +124,13 @@ export default function SprintsPage() {
                     <p className="truncate font-medium" title={s.name}>{s.name}</p>
                     <Badge variant={m.variant} className="shrink-0">{m.label}</Badge>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">{sprintRange(s)}{s.board ? ` · ${s.board}` : ''}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{sprintRange(s)}{s.board ? ` | ${s.board}` : ''}</p>
                   <div className="mt-2 flex items-center gap-3 text-xs">
                     <span className="text-green-600 font-medium">{s.completed} done</span>
                     <span className="text-blue-600">{s.in_progress} in progress</span>
                     {s.blocked > 0 && <span className="text-red-600 font-medium">{s.blocked} blocked</span>}
                   </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">{s.tickets} tickets · {s.employees} people{s.completed_share !== null ? ` · ${fmtPct(s.completed_share)} done` : ''}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{s.tickets} tickets | {s.employees} people{s.completed_share !== null ? ` | ${fmtPct(s.completed_share)} done` : ''}</p>
                 </button>
               )
             })}
@@ -139,7 +140,7 @@ export default function SprintsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Zap className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">{selectedName}</span>
-              {d?.sprint?.goal && <span className="text-xs text-muted-foreground">· Goal: {d.sprint.goal}</span>}
+              {d?.sprint?.goal && <span className="text-xs text-muted-foreground">| Goal: {d.sprint.goal}</span>}
               {pinned ? (
                 <Button size="sm" variant="secondary" onClick={() => setList('sprint', [])}><X /> Remove sprint filter</Button>
               ) : (
@@ -160,7 +161,6 @@ export default function SprintsPage() {
                 <KpiCard label="Blocked" value={d.kpis.blocked_tickets} icon={<AlertOctagon className="h-4 w-4" />} tone="red" compact previous={prev?.blocked ?? null} onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
                 <KpiCard label="Analysis" value={d.kpis.analysis_tickets} icon={<SearchCheck className="h-4 w-4" />} tone="purple" compact previous={prev?.analysis ?? null} />
                 <KpiCard label="People" value={d.kpis.active_employees} icon={<Users className="h-4 w-4" />} tone="grey" compact previous={prev?.employees ?? null} />
-                <KpiCard label="Activities" value={d.kpis.total_activities} icon={<Activity className="h-4 w-4" />} tone="grey" compact previous={prev?.activities ?? null} hint="Status transitions recorded in the sprint." />
                 <KpiCard label="Dev deployed" value={d.kpis.dev_deployed} tone="teal" compact />
                 <KpiCard label="Prod releases" value={d.kpis.production_releases} sub={`${d.kpis.production_released} deployed`} icon={<Rocket className="h-4 w-4" />} tone="purple" compact previous={prev?.production_releases ?? null} />
                 <KpiCard label="Remaining" value={d.kpis.remaining_tickets} tone="orange" compact hint="Tickets whose latest status is not Completed / Deployed / Cancelled." />
@@ -182,23 +182,23 @@ export default function SprintsPage() {
                     <ChartCard title="Sprint ticket status" description="Unique tickets by latest status in the sprint.">
                       <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                     </ChartCard>
-                    <ChartCard title="Sprint burn trend" description="Activities and completed tickets per day; open backlog within the sprint." className="lg:col-span-2">
-                      <TrendChart data={d.charts.trend} series={[{ key: 'activities', label: 'Activities', color: '#2563eb' }, { key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
+                    <ChartCard title="Sprint burn trend" description="Completed tickets per day and open backlog within the sprint." className="lg:col-span-2">
+                      <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'backlog', label: 'Open backlog', color: 'orange', dashed: true }]} />
                     </ChartCard>
                   </div>
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <ChartCard title="Status by person" description="Unique tickets per assignee, stacked by latest status.">
+                    <ChartCard title="Status by person" description="Unique tickets per assignee by latest status. Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
                       <StackedBarChart data={d.charts.status_by_employee} series={STATUS_SERIES} onSelect={goEmployee} max={30} />
                     </ChartCard>
-                    <ChartCard title="Work type by person" description="Activity rows by work type.">
+                    <ChartCard title="Work type by person" description="Work rows per assignee by work type. Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
                       <StackedBarChart data={d.charts.type_by_employee} series={TYPE_SERIES} onSelect={goEmployee} max={30} />
                     </ChartCard>
                   </div>
                   {prev && (
                     <Card>
                       <CardHeader>
-                        <CardTitle>Compared with previous sprint — {prev.name}</CardTitle>
-                        <CardDescription>{sprintRange(prev)} · {prev.tickets} tickets · {prev.completed} completed · {prev.blocked} blocked · {fmtPct(prev.completed_share)} done. The KPI deltas above are against this sprint.</CardDescription>
+                        <CardTitle>Compared with previous sprint - {prev.name}</CardTitle>
+                        <CardDescription>{sprintRange(prev)} | {prev.tickets} tickets | {prev.completed} completed | {prev.blocked} blocked | {fmtPct(prev.completed_share)} done. The KPI deltas above are against this sprint.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <Button variant="outline" size="sm" onClick={() => select(prev.name)}>Open {prev.name}</Button>
@@ -235,7 +235,7 @@ export default function SprintsPage() {
                         </div>
                         <KpiGrid cols={4}>
                           <KpiCard label={`Average velocity (${unitLabel})`} value={avgAll} icon={<Zap className="h-4 w-4" />} tone="blue" compact hint={`Average completed ${unitLabel} per closed sprint (${v.closed_sprints} closed sprints with work).`} />
-                          <KpiCard label="Average of last 3 sprints" value={avg3} tone="teal" compact hint="Recent velocity — the better basis for planning the next sprint." />
+                          <KpiCard label="Average of last 3 sprints" value={avg3} tone="teal" compact hint="Recent velocity - the better basis for planning the next sprint." />
                           <KpiCard label={`Current sprint committed`} value={active?.committed ?? null} tone="grey" compact sub={active?.name} />
                           <KpiCard label={`Current sprint completed`} value={active?.completed ?? null} tone="green" compact sub={unitLabel} />
                         </KpiGrid>
@@ -257,45 +257,82 @@ export default function SprintsPage() {
                           }
                           height={340}
                         >
-                          <GroupedBarChart data={rows} series={[{ key: 'committed', label: 'Committed', color: 'grey' }, { key: 'completed', label: 'Completed', color: 'green' }]} height={340} labelFormatter={shortName} />
+                          <GroupedBarChart data={rows} series={[{ key: 'committed', label: 'Committed', color: 'slate' }, { key: 'completed', label: 'Completed', color: 'green' }]} labelFormatter={shortName} />
                         </ChartCard>
                         <ChartCard title="Completed velocity trend" description={`Completed ${unitLabel} per sprint with the average as a reference (${rangeLabel}).`} height={260}>
-                          <TrendChart data={shown.map((s) => ({ date: shortName(s.name), completed: s.completed, average: avgAll ?? 0 }))} series={[{ key: 'completed', label: 'Completed', color: '#16a34a' }, { key: 'average', label: 'Average', color: '#6b7280', dashed: true }]} height={260} />
+                          <TrendChart data={shown.map((s) => ({ date: shortName(s.name), completed: s.completed, average: avgAll ?? 0 }))} series={[{ key: 'completed', label: 'Completed', color: 'green' }, { key: 'average', label: 'Average', color: 'slate', dashed: true }]} />
                         </ChartCard>
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Velocity table</CardTitle>
-                            <CardDescription>One row per sprint, oldest first. Carry-over = committed − completed.</CardDescription>
-                          </CardHeader>
-                          <CardContent className="p-0">
-                            <table className="w-full text-xs">
-                              <thead className="bg-muted text-muted-foreground">
-                                <tr>
-                                  <th className="px-3 py-1.5 text-left font-medium">Sprint</th>
-                                  <th className="px-3 py-1.5 text-left font-medium">Dates</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Committed pts</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Completed pts</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Tickets</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Completed tickets</th>
-                                  <th className="px-3 py-1.5 text-right font-medium">Done %</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {v.items.map((s) => (
-                                  <tr key={s.name} className={cn('cursor-pointer border-t hover:bg-muted/40', s.state === 'active' && 'font-medium')} onClick={() => select(s.name)}>
-                                    <td className="px-3 py-1.5 whitespace-nowrap">{s.name}{s.state === 'active' && <Badge variant="success" className="ml-2">Active</Badge>}</td>
-                                    <td className="px-3 py-1.5 whitespace-nowrap text-muted-foreground">{s.start_date ? `${fmtDate(s.start_date, { day: '2-digit', month: 'short' })} – ${s.end_date ? fmtDate(s.end_date, { day: '2-digit', month: 'short' }) : 'open'}` : '—'}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed_points}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums text-green-600">{s.completed_points}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed_tickets}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums text-green-600">{s.completed_tickets}</td>
-                                    <td className="px-3 py-1.5 text-right tabular-nums">{s.committed ? fmtPct((100 * s.completed) / s.committed) : '–'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </CardContent>
-                        </Card>
+                        {(() => {
+                          const tPts = tableUnit === 'points'
+                          const tRows = (tableRange === 'all' ? [...all] : all.slice(-tableRange)).reverse()
+                          const val = (x: (typeof all)[number]) => ({ committed: tPts ? x.committed_points : x.committed_tickets, completed: tPts ? x.completed_points : x.completed_tickets })
+                          const maxC = Math.max(1, ...tRows.map((x) => val(x).committed))
+                          const uLabel = tPts ? 'points' : 'tickets'
+                          return (
+                            <Card>
+                              <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+                                <div>
+                                  <CardTitle>Velocity table</CardTitle>
+                                  <CardDescription>Latest sprint first. Committed = {uLabel} of all tickets worked in the sprint; Completed = those finished; Carry-over = committed minus completed. Click a sprint to open it.</CardDescription>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <div className="flex items-center gap-0.5 rounded-md border p-0.5 text-xs">
+                                    <Button size="sm" variant={!tPts ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setTableUnit('tickets')}>Tickets</Button>
+                                    <Button size="sm" variant={tPts ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setTableUnit('points')}>Points</Button>
+                                  </div>
+                                  <NativeSelect value={String(tableRange)} onChange={(e) => setTableRange(e.target.value === 'all' ? 'all' : Number(e.target.value))} className="h-8 w-[150px] text-xs">
+                                    <option value="5">Last 5 sprints</option>
+                                    <option value="10">Last 10 sprints</option>
+                                    <option value="15">Last 15 sprints</option>
+                                    <option value="all">All sprints ({all.length})</option>
+                                  </NativeSelect>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="p-0">
+                                <div className="overflow-hidden rounded-b-lg border-t">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-muted/70 text-[11px] uppercase tracking-wide text-muted-foreground">
+                                      <tr className="border-b-2">
+                                        <th className="h-10 px-4 text-left font-semibold">Sprint</th>
+                                        <th className="h-10 px-3 text-left font-semibold">Dates</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Committed</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Completed</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Carry-over</th>
+                                        <th className="h-10 px-3 text-right font-semibold">Done %</th>
+                                        <th className="h-10 px-4 text-left font-semibold">Completed vs committed</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {tRows.map((x) => {
+                                        const { committed, completed } = val(x)
+                                        const carry = Math.max(0, committed - completed)
+                                        const pct = committed ? Math.round((100 * completed) / committed) : null
+                                        return (
+                                          <tr key={x.name} className={cn('cursor-pointer border-b border-border/60 odd:bg-background even:bg-muted/20 hover:bg-primary/[0.06]', x.state === 'active' && 'font-medium')} onClick={() => select(x.name)}>
+                                            <td className="whitespace-nowrap px-4 py-2">{x.name}{x.state === 'active' && <Badge variant="success" className="ml-2">Active</Badge>}</td>
+                                            <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{x.start_date ? `${fmtDate(x.start_date, { day: '2-digit', month: 'short' })} - ${x.end_date ? fmtDate(x.end_date, { day: '2-digit', month: 'short' }) : 'open'}` : '-'}</td>
+                                            <td className="px-3 py-2 text-right font-semibold tabular-nums">{committed}</td>
+                                            <td className="px-3 py-2 text-right tabular-nums"><span className={cn('inline-block min-w-[2rem] rounded-full px-2 py-0.5 text-center', completed ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'text-muted-foreground/40')}>{completed}</span></td>
+                                            <td className="px-3 py-2 text-right tabular-nums"><span className={cn('inline-block min-w-[2rem] rounded-full px-2 py-0.5 text-center', carry ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400' : 'text-muted-foreground/40')}>{carry}</span></td>
+                                            <td className={cn('px-3 py-2 text-right font-semibold tabular-nums', pct === null ? 'text-muted-foreground' : pct >= 70 ? 'text-green-700 dark:text-green-400' : pct >= 40 ? 'text-orange-600' : 'text-red-600')}>{pct === null ? '-' : `${pct}%`}</td>
+                                            <td className="px-4 py-2">
+                                              <div className="h-2.5 w-full max-w-[260px]" title={`${completed} of ${committed} ${uLabel}`}>
+                                                <div className="flex h-full overflow-hidden rounded-full bg-muted" style={{ width: `${Math.max((100 * committed) / maxC, committed ? 4 : 0)}%` }}>
+                                                  <div className="h-full bg-green-500" style={{ width: `${pct ?? 0}%` }} />
+                                                </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )
+                                      })}
+                                      {!tRows.length && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No sprints</td></tr>}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )
+                        })()}
                       </>
                     )
                   })()}
@@ -303,11 +340,11 @@ export default function SprintsPage() {
 
                 <TabsContent value="employees" className="space-y-4">
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <ChartCard title="Completed tickets by person">
-                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.completed_total) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="#16a34a" max={30} valueLabel="Completed" />
+                    <ChartCard title="Completed tickets by person" description="Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
+                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.completed_total) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="green" max={40} valueLabel="Completed" />
                     </ChartCard>
-                    <ChartCard title="Blocked tickets by person">
-                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="#dc2626" max={30} valueLabel="Blocked" />
+                    <ChartCard title="Blocked tickets by person" description="Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
+                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="red" max={40} valueLabel="Blocked" />
                     </ChartCard>
                   </div>
                   <Card>
@@ -348,7 +385,7 @@ export default function SprintsPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle>All sprints</CardTitle>
-                      <CardDescription>Active sprint first, then previous sprints newest first. The global date range is not applied here; the other filters (employee, project, board…) are.</CardDescription>
+                      <CardDescription>Active sprint first, then previous sprints newest first. The global date range is not applied here; the other filters (employee, project, board...) are.</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <DataTable data={items} columns={cols} onRowClick={(r) => select(r.name)} exportName="sprints" dense />

@@ -24,13 +24,13 @@ export function InsightsPanel({ insights, title = 'Management insights', max = 1
         <CardTitle className="flex items-center gap-2">
           <Lightbulb className="h-4 w-4 text-primary" /> {title}
         </CardTitle>
-        <CardDescription>Rule-based observations calculated from the Excel data for the selected period and filters.</CardDescription>
+        <CardDescription>Rule-based observations for the selected period and filters.</CardDescription>
       </CardHeader>
       <CardContent>
         {insights.length === 0 ? (
           <EmptyState title="No insights available" />
         ) : (
-          <ul className="grid gap-2 md:grid-cols-2">
+          <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {insights.slice(0, max).map((ins, i) => {
               const body = (
                 <li key={i} className={cn('flex gap-3 rounded-md border border-l-4 bg-card p-3 text-sm', BORDER[ins.type], ins.link && 'hover:bg-muted/50')}>
