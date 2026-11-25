@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { GitCompareArrows, Moon, Sun, Info, Database, Lock, Server, TrendingDown, TrendingUp } from 'lucide-react'
+import { GitCompareArrows, Moon, Sun, Info, Database, Lock, Server, TrendingDown, TrendingUp, Plug, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/common/DataTable'
 import { GlobalFilterBar, PageHeader } from '@/components/common/PageHeader'
 import { DataSourceCard } from '@/components/common/DataSourceCard'
+import { KeyValueList, OptionTile, SettingsCard, StatStrip, StatTile } from '@/components/common/Settings'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { KpiCard } from '@/components/common/KpiCard'
 import { ChartCard, TrendChart } from '@/components/charts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
-import { Switch } from '@/components/ui/primitives'
 import { Badge } from '@/components/ui/badge'
 import { useAppConfig, useDataStatus } from '@/hooks/useData'
 import { useFilters, presetRange } from '@/hooks/useFilters'
@@ -234,63 +234,56 @@ export function SettingsPage() {
   const { theme, toggle } = useTheme()
   const cfg = useAppConfig()
   const status = useDataStatus()
+  const st = status.data
+  const c = cfg.data
   return (
     <>
-      <PageHeader title="Application Settings" description="Data source, appearance and runtime information." breadcrumbs={[{ label: 'Settings' }]} />
+      <PageHeader title="Application Settings" description="Where the data comes from, how the application looks, and runtime details for support." breadcrumbs={[{ label: 'Settings' }]} />
+      {st && (
+        <StatStrip cols={5}>
+          <StatTile icon={Database} label="Data source" value={<span className="uppercase">{st.source}</span>} sub={st.configured_mode === 'auto' ? 'chosen automatically' : 'set manually'} tone="blue" />
+          <StatTile icon={Plug} label="Jira boards" value={st.jira ? st.jira.boards.length : 0} sub={st.jira ? `${st.jira.issues} issues loaded` : 'not connected'} tone={st.jira ? 'green' : 'grey'} />
+          <StatTile icon={FileSpreadsheet} label="Work rows" value={st.activity_count} sub={`${st.employee_count} people | ${st.project_count} projects`} tone="default" />
+          <StatTile icon={RefreshCw} label="Last refresh" value={st.last_refresh ? new Date(st.last_refresh).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'} sub={st.last_refresh ? new Date(st.last_refresh).toLocaleDateString() : undefined} tone="grey" />
+          <StatTile icon={theme === 'dark' ? Moon : Sun} label="Theme" value={theme === 'dark' ? 'Dark' : 'Light'} sub="change below" tone="grey" />
+        </StatStrip>
+      )}
       <DataSourceCard />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Appearance</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-sm">{theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />} Dark theme</span>
-            <Switch checked={theme === 'dark'} onCheckedChange={toggle} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Info className="h-4 w-4" /> Runtime</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {cfg.data && (
-              <>
-                <Row label="Application" value={`${cfg.data.app_name} v${cfg.data.version}`} />
-                <Row label="Environment" value={cfg.data.environment} />
-                <Row label="Default period" value={`Last ${cfg.data.default_period_days} days`} />
-                <Row label="Upload limit" value={`${cfg.data.max_upload_mb} MB | ${cfg.data.allowed_extensions.join(', ')}`} />
-                <Row label="Database" value={<span className="flex items-center gap-1"><Database className="h-3.5 w-3.5" /> {cfg.data.database}</span>} />
-                <Row label="Authentication" value={<span className="flex items-center gap-1"><Lock className="h-3.5 w-3.5" /> {cfg.data.authentication}</span>} />
-                <Row label="Jira integration" value={cfg.data.jira_configured ? <span>{cfg.data.jira_email} | {cfg.data.jira_boards} board(s) | auto-sync {cfg.data.jira_auto_sync ? 'on' : 'off'} | <Link className="text-primary hover:underline" to="/config/jira">manage</Link></span> : <span>not configured | <Link className="text-primary hover:underline" to="/config/jira">set up</Link></span>} />
-              </>
-            )}
-            {status.data && (
-              <>
-                <Row label="Backend" value={<span className="flex items-center gap-1"><Server className="h-3.5 w-3.5" /> <a className="text-primary hover:underline" href="/docs" target="_blank" rel="noreferrer">API docs (/docs)</a></span>} />
-                <Row label="Source folder" value={<code className="rounded bg-muted px-1 text-xs">{status.data.source_dir}</code>} />
-                <Row label="Data version" value={<Badge variant="secondary">v{status.data.version}</Badge>} />
-              </>
-            )}
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Security notice</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            This first version has no authentication or role-based access and is intended for a <b>trusted local environment</b> only. Excel is the only data source; no database is used. The architecture (service layer, repository-style data store, event bus) is ready for authentication and a database to be introduced later without rewriting the application.
-          </CardContent>
-        </Card>
+        <SettingsCard icon={Sun} title="Appearance" description="Applies to this browser only.">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <OptionTile icon={Sun} title="Light" description="Default. Best for bright rooms and printing." active={theme !== 'dark'} onClick={() => theme === 'dark' && toggle()} />
+            <OptionTile icon={Moon} title="Dark" description="Reduced glare for long sessions." active={theme === 'dark'} onClick={() => theme !== 'dark' && toggle()} />
+          </div>
+        </SettingsCard>
+        <SettingsCard icon={Plug} title="Integrations" description="Connections used to build the dashboards." action={<Button asChild size="sm" variant="outline"><Link to="/config/jira">Manage Jira</Link></Button>}>
+          <KeyValueList items={[
+            { label: 'Jira', value: c?.jira_configured ? <span className="flex items-center justify-end gap-2"><Badge variant="success">connected</Badge><span className="text-muted-foreground">{c.jira_email}</span></span> : <Badge variant="warning">not configured</Badge> },
+            { label: 'Boards', value: c ? `${c.jira_boards} board(s)` : '-' },
+            { label: 'Auto-sync', value: c ? <Badge variant={c.jira_auto_sync ? 'success' : 'secondary'}>{c.jira_auto_sync ? 'on' : 'off'}</Badge> : '-' },
+            { label: 'Excel source folder', value: st ? <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{st.source_dir}</code> : '-' },
+          ]} />
+        </SettingsCard>
+        <SettingsCard icon={Info} title="Runtime" description="Useful when reporting a problem.">
+          {c && (
+            <KeyValueList items={[
+              { label: 'Application', value: `${c.app_name} v${c.version}` },
+              { label: 'Environment', value: <Badge variant="secondary">{c.environment}</Badge> },
+              { label: 'Default period', value: `Last ${c.default_period_days} days` },
+              { label: 'Upload limit', value: `${c.max_upload_mb} MB | ${c.allowed_extensions.join(', ')}` },
+              { label: 'Database', value: <span className="flex items-center justify-end gap-1"><Database className="h-3.5 w-3.5" /> {c.database}</span> },
+              { label: 'Authentication', value: <span className="flex items-center justify-end gap-1"><Lock className="h-3.5 w-3.5" /> {c.authentication}</span> },
+              { label: 'Backend API', value: <a className="flex items-center justify-end gap-1 text-primary hover:underline" href="/docs" target="_blank" rel="noreferrer"><Server className="h-3.5 w-3.5" /> API docs (/docs)</a> },
+              ...(st ? [{ label: 'Data version', value: <Badge variant="secondary">v{st.version}</Badge> }] : []),
+            ]} />
+          )}
+        </SettingsCard>
+        <SettingsCard icon={Lock} title="Security notice" tone="warning" description="Please read before sharing this application.">
+          <p className="text-sm text-muted-foreground">
+            This version has <b>no authentication or role-based access</b> and is intended for a trusted local environment only. Jira tokens are stored encrypted on the server; no other data leaves the machine. The service layer, data store and event bus are ready for authentication and a database to be added without rewriting the application.
+          </p>
+        </SettingsCard>
       </div>
     </>
-  )
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between border-b py-1.5 last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
-    </div>
   )
 }

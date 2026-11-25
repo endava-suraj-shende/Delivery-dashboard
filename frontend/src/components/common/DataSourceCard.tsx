@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Database, FileSpreadsheet, Loader2, Plug, RefreshCw } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { OptionTile, SettingsCard } from '@/components/common/Settings'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input, Label } from '@/components/ui/input'
@@ -31,45 +31,38 @@ export function DataSourceCard({ compact }: { compact?: boolean }) {
   const reload = useMutation({ mutationFn: dataSourceApi.reload, onSuccess: (st) => { qc.invalidateQueries(); toast({ title: 'Data reloaded', description: `${st.activity_count} activities from ${st.source}`, variant: 'success' }) }, onError: (e) => toast({ title: 'Reload failed', description: errorMessage(e), variant: 'destructive' }) })
   if (!s) return null
   const busy = update.isPending || reload.isPending
+  const modeIcon = { auto: Database, jira: Plug, excel: FileSpreadsheet, both: Database } as const
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between space-y-0">
-        <div>
-          <CardTitle className="flex items-center gap-2"><Database className="h-4 w-4" /> Primary data source</CardTitle>
-          <CardDescription>
-            Active: <b className="uppercase">{s.source}</b>{s.configured_mode === 'auto' && ' (automatic)'} | {s.activity_count} activities | {s.employee_count} employees | {s.project_count} projects
-            {s.jira && ` | ${s.jira.issues} Jira issues from ${s.jira.boards.length} board(s)`}
-          </CardDescription>
-        </div>
-        <Button size="sm" variant="outline" onClick={() => reload.mutate()} disabled={busy}><RefreshCw className={cn(reload.isPending && 'animate-spin')} /> Reload</Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className={cn('grid gap-2', compact ? 'sm:grid-cols-2' : 'sm:grid-cols-4')}>
+    <SettingsCard
+      icon={Database}
+      title="Primary data source"
+      description={<>Active: <b className="uppercase">{s.source}</b>{s.configured_mode === 'auto' && ' (chosen automatically)'} | {s.activity_count} work rows | {s.employee_count} people | {s.project_count} projects{s.jira && ` | ${s.jira.issues} Jira issues from ${s.jira.boards.length} board(s)`}</>}
+      action={<Button size="sm" variant="outline" onClick={() => reload.mutate()} disabled={busy}><RefreshCw className={cn(reload.isPending && 'animate-spin')} /> Reload data</Button>}
+    >
+      <div className="space-y-4">
+        <div className={cn('grid gap-2', compact ? 'sm:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-4')}>
           {MODES.map((m) => {
             const disabled = (m.key === 'jira' || m.key === 'both') && !s.jira_available
-            return (
-              <button key={m.key} disabled={disabled || busy} onClick={() => update.mutate({ mode: m.key })}
-                className={cn('rounded-md border p-3 text-left text-sm transition hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50', s.configured_mode === m.key && 'border-primary bg-primary/5 ring-1 ring-primary')}>
-                <p className="flex items-center gap-1 font-medium">{m.key === 'excel' ? <FileSpreadsheet className="h-3.5 w-3.5" /> : m.key === 'jira' ? <Plug className="h-3.5 w-3.5" /> : <Database className="h-3.5 w-3.5" />} {m.label}</p>
-                <p className="text-[11px] text-muted-foreground">{m.desc}{disabled ? ' Requires Jira credentials and a board.' : ''}</p>
-              </button>
-            )
+            return <OptionTile key={m.key} icon={modeIcon[m.key]} title={m.label} description={`${m.desc}${disabled ? ' Requires Jira credentials and a board.' : ''}`} active={s.configured_mode === m.key} disabled={disabled || busy} onClick={() => update.mutate({ mode: m.key })} />
           })}
         </div>
         {s.source !== 'excel' && (
-          <div className="flex flex-wrap items-end gap-3 text-sm">
-            <div>
-              <Label>Jira look-back (days)</Label>
-              <Input type="number" min={7} max={730} className="mt-1 h-8 w-32" value={lookback === '' ? s.lookback_days : lookback} onChange={(e) => setLookback(e.target.value === '' ? '' : Number(e.target.value))} />
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Jira loading options</p>
+            <div className="flex flex-wrap items-end gap-3 text-sm">
+              <div>
+                <Label>Look-back window (days)</Label>
+                <Input type="number" min={7} max={730} className="mt-1 h-8 w-32" value={lookback === '' ? s.lookback_days : lookback} onChange={(e) => setLookback(e.target.value === '' ? '' : Number(e.target.value))} />
+              </div>
+              <div>
+                <Label>Auto-refresh every (minutes)</Label>
+                <Input type="number" min={1} max={1440} className="mt-1 h-8 w-32" value={refresh === '' ? s.refresh_minutes : refresh} onChange={(e) => setRefresh(e.target.value === '' ? '' : Number(e.target.value))} />
+              </div>
+              <Button size="sm" disabled={busy || (lookback === '' && refresh === '')} onClick={() => update.mutate({ lookback_days: lookback === '' ? undefined : lookback, refresh_minutes: refresh === '' ? undefined : refresh })}>
+                {update.isPending ? <Loader2 className="animate-spin" /> : null} Apply and reload
+              </Button>
+              <span className="text-xs text-muted-foreground">Only issues updated inside the look-back window are loaded from each board.</span>
             </div>
-            <div>
-              <Label>Auto-refresh (minutes)</Label>
-              <Input type="number" min={1} max={1440} className="mt-1 h-8 w-32" value={refresh === '' ? s.refresh_minutes : refresh} onChange={(e) => setRefresh(e.target.value === '' ? '' : Number(e.target.value))} />
-            </div>
-            <Button size="sm" disabled={busy || (lookback === '' && refresh === '')} onClick={() => update.mutate({ lookback_days: lookback === '' ? undefined : lookback, refresh_minutes: refresh === '' ? undefined : refresh })}>
-              {update.isPending ? <Loader2 className="animate-spin" /> : null} Apply & reload
-            </Button>
-            <span className="text-xs text-muted-foreground">Only issues updated within the look-back window are loaded from each board.</span>
           </div>
         )}
         {s.jira && s.jira.errors.length > 0 && (
@@ -83,7 +76,7 @@ export function DataSourceCard({ compact }: { compact?: boolean }) {
             ))}
           </details>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsCard>
   )
 }
