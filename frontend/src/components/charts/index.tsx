@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Bar,
   BarChart,
@@ -44,44 +44,88 @@ const tooltipStyle = { borderRadius: 8, border: '1px solid hsl(var(--border))', 
 const axisTick = { fontSize: 11, fill: 'hsl(var(--muted-foreground))' }
 
 // ------------------------------------------------------------------ donut
-export function DonutChart({ data, onSelect, selected, height = 260, centerLabel }: { data: CategoryPoint[]; onSelect?: (key: string) => void; selected?: string[]; height?: number; centerLabel?: string }) {
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null)
+  const [size, setSize] = useState({ w: 0, h: 0 })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = () => {
+      const r = el.getBoundingClientRect()
+      setSize((s) => (Math.abs(s.w - r.width) < 1 && Math.abs(s.h - r.height) < 1 ? s : { w: r.width, h: r.height }))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return { ref, ...size }
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+
+export function DonutChart({ data, onSelect, selected, centerLabel }: { data: CategoryPoint[]; onSelect?: (key: string) => void; selected?: string[]; height?: number; centerLabel?: string }) {
   const points = data.filter((d) => d.value > 0)
   const total = points.reduce((s, p) => s + p.value, 0)
+  const { ref, w, h } = useElementSize<HTMLDivElement>()
   if (!total) return <EmptyState />
+
+  // Side-by-side only when the card is wide and not taller than it is wide; otherwise stack donut over a full-width legend.
+  const row = w >= 480 && h <= w
+  const legendRows = points.length
+  const legendHeight = legendRows * 34 + 8
+  const size = w === 0 ? 0 : row ? clamp(Math.min(w * 0.42, h), 150, 280) : clamp(Math.min(w * 0.8, Math.max(h - legendHeight - 12, 0)), 150, 300)
+  const big = size >= 220
+
   return (
-    <div className="flex h-full flex-col items-center gap-2 md:flex-row">
-      <div className="relative h-full w-full md:w-1/2" style={{ minHeight: height - 40 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={points} dataKey="value" nameKey="label" innerRadius="58%" outerRadius="85%" paddingAngle={2} stroke="none" onClick={onSelect ? (d) => onSelect((d as unknown as CategoryPoint).key) : undefined} style={{ cursor: onSelect ? 'pointer' : 'default' }}>
-              {points.map((p, i) => (
-                <Cell key={p.key} fill={colorFor(p.color, i)} opacity={selected?.length && !selected.includes(p.key) ? 0.35 : 1} />
-              ))}
-            </Pie>
-            <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${Number(v ?? 0)} (${((Number(v ?? 0) / total) * 100).toFixed(0)}%)`, String(n)]} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-semibold tabular-nums">{total}</span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{centerLabel ?? 'total'}</span>
+    <div ref={ref} className={cn('flex h-full w-full items-center justify-center', row ? 'flex-row gap-6' : 'flex-col gap-3')}>
+      {size > 0 && (
+        <div className="relative shrink-0" style={{ width: size, height: size }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <Pie data={points} dataKey="value" nameKey="label" innerRadius="66%" outerRadius="96%" paddingAngle={points.length > 1 ? 2 : 0} stroke="none" cornerRadius={3} onClick={onSelect ? (d) => onSelect((d as unknown as CategoryPoint).key) : undefined} style={{ cursor: onSelect ? 'pointer' : 'default', outline: 'none' }}>
+                {points.map((p, i) => (
+                  <Cell key={p.key} fill={colorFor(p.color, i)} opacity={selected?.length && !selected.includes(p.key) ? 0.3 : 1} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [`${Number(v ?? 0)} (${((Number(v ?? 0) / total) * 100).toFixed(0)}%)`, String(n)]} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className={cn('font-semibold tabular-nums leading-none', big ? 'text-3xl' : 'text-xl')}>{total}</span>
+            <span className={cn('mt-1 uppercase tracking-wide text-muted-foreground', big ? 'text-[11px]' : 'text-[10px]')}>{centerLabel ?? 'total'}</span>
+          </div>
         </div>
-      </div>
-      <ul className="grid w-full grid-cols-2 gap-x-3 gap-y-1 text-xs md:w-1/2 md:grid-cols-1">
-        {points.map((p, i) => (
-          <li
-            key={p.key}
-            className={cn('flex items-center justify-between gap-2 rounded px-1.5 py-0.5', onSelect && 'cursor-pointer hover:bg-muted', selected?.includes(p.key) && 'bg-muted font-medium')}
-            onClick={onSelect ? () => onSelect(p.key) : undefined}
-          >
-            <span className="flex items-center gap-2 truncate">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colorFor(p.color, i) }} />
-              <span className="truncate">{p.label}</span>
-            </span>
-            <span className="tabular-nums text-muted-foreground">
-              {p.value} <span className="opacity-60">({((p.value / total) * 100).toFixed(0)}%)</span>
-            </span>
-          </li>
-        ))}
+      )}
+      <ul className={cn('min-w-0 space-y-1', row ? 'flex-1' : 'w-full')}>
+        {points.map((p, i) => {
+          const pct = (p.value / total) * 100
+          const color = colorFor(p.color, i)
+          const active = selected?.includes(p.key)
+          const dimmed = selected?.length && !active
+          return (
+            <li
+              key={p.key}
+              className={cn('rounded-md px-2 py-1.5 transition-colors', onSelect && 'cursor-pointer hover:bg-muted', active && 'bg-muted', dimmed && 'opacity-60')}
+              onClick={onSelect ? () => onSelect(p.key) : undefined}
+              title={`${p.label}: ${p.value} (${pct.toFixed(1)}%)`}
+            >
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                  <span className={cn('truncate', active && 'font-medium')}>{p.label}</span>
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  <span className="font-semibold">{p.value}</span>
+                  <span className="ml-1.5 text-muted-foreground">{pct.toFixed(0)}%</span>
+                </span>
+              </div>
+              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 1.5)}%`, background: color }} />
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
