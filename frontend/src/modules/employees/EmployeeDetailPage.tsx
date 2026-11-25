@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, AlertOctagon, CheckCircle2, FileOutput, Hourglass, Rocket, ServerCog, Ticket, FlaskConical, Code2, SearchCheck } from 'lucide-react'
+import { Activity, AlertOctagon, CheckCircle2, FileOutput, Hourglass, Rocket, ServerCog, Ticket, FlaskConical, Code2, SearchCheck, TrendingUp, TrendingDown } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, CategoryBarChart, NamedBarChart, TrendChart, TrendBarChart, StackedBarChart, GroupedBarChart, DEV_SERIES, PROD_SERIES } from '@/components/charts'
+import { ChartCard, DonutChart, CategoryBarChart, NamedBarChart, TrendChart, TrendBarChart, StackedBarChart, DEV_SERIES, PROD_SERIES } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState, EmptyState } from '@/components/common/States'
 import { ActivitiesTable, ReleasesTable, TicketDialog, TicketsTable } from '@/components/common/Tables'
@@ -17,20 +17,7 @@ import { useDimensions } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { employeeApi } from '@/services/api'
 import { cn, fmtDate, fmtNum } from '@/lib/utils'
-import { WeeklyTimeline } from '@/components/common/WeeklyTimeline'
 import { FEATURES } from '@/lib/features'
-
-function BarCell({ value, max, label, pct, color = 'bg-emerald-500' }: { value: number; max: number; label: string; pct: number | null; color?: string }) {
-  const width = max > 0 ? Math.min(100, (100 * value) / max) : 0
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 w-24 overflow-hidden rounded-full bg-muted">
-        <div className={cn('h-full rounded-full', color)} style={{ width: `${width}%` }} />
-      </div>
-      <span className="tabular-nums text-xs text-muted-foreground">{label}{pct !== null && pct !== undefined ? ` (${fmtNum(pct, 0)}%)` : ''}</span>
-    </div>
-  )
-}
 
 export default function EmployeeDetailPage() {
   const { name = '' } = useParams()
@@ -99,102 +86,90 @@ export default function EmployeeDetailPage() {
           {perf.data?.performance && (() => {
             const p = perf.data.performance
             const cur = p.current
-            const statusKeys = ['completed', 'development_tickets', 'code_review', 'testing_tickets', 'ready_for_deployment', 'backlog', 'on_hold', 'blocked'] as const
-            const statusRows = p.metrics.filter((m) => (statusKeys as readonly string[]).includes(m.key)).map((m) => ({ name: m.label, current: Number(m.current ?? 0), previous: Number(m.previous ?? 0) }))
             const trend = perf.data.current.trend
             const fmtVal = (v: number | null) => (v === null || v === undefined ? '-' : fmtNum(v, 0))
-            const weekly = d.charts.weekly_by_employee
-            const mine = weekly.employees.find((e) => e.employee.toLowerCase() === name.toLowerCase())
-            const weeklyRows = mine ? mine.weeks.map((w) => ({ name: fmtDate(w.week, { day: '2-digit', month: 'short' }), started: w.new, completed: w.completed, worked: w.worked })) : []
+            const groups: { title: string; keys: string[]; tone: string }[] = [
+              { title: 'Delivery', keys: ['unique_tickets', 'completed', 'on_time', 'overdue'], tone: 'bg-green-500' },
+              { title: 'Work in progress', keys: ['development_tickets', 'code_review', 'testing_tickets', 'ready_for_deployment', 'backlog', 'on_hold', 'blocked'], tone: 'bg-blue-500' },
+              { title: 'Deployments', keys: ['dev_deployed', 'production_releases', 'production_released'], tone: 'bg-purple-500' },
+            ]
+            const badKeys = ['blocked', 'overdue', 'on_hold', 'backlog']
+            const swatch: Record<string, string> = { unique_tickets: '#64748b', completed: '#16a34a', on_time: '#16a34a', overdue: '#dc2626', development_tickets: '#2563eb', code_review: '#4f46e5', testing_tickets: '#7c3aed', ready_for_deployment: '#0d9488', backlog: '#f97316', on_hold: '#eab308', blocked: '#dc2626', dev_deployed: '#0d9488', production_releases: '#7c3aed', production_released: '#16a34a' }
+            const metricByKey = new Map(p.metrics.map((m) => [m.key, m]))
+            const Change = ({ m }: { m: (typeof p.metrics)[number] }) => {
+              if (m.delta === null || m.delta === undefined || m.delta === 0) return <span className="inline-block min-w-[2.75rem] rounded-full bg-muted px-2 py-0.5 text-center text-[11px] text-muted-foreground">0</span>
+              const good = (m.delta > 0) === !badKeys.includes(m.key)
+              return (
+                <span className={cn('inline-flex min-w-[2.75rem] items-center justify-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium', good ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'bg-red-500/10 text-red-700 dark:text-red-400')}>
+                  {m.delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {m.delta > 0 ? '+' : ''}{fmtNum(m.delta, 0)}
+                </span>
+              )
+            }
+            const Rate = ({ label, done, of, color }: { label: string; done: number; of: number; color: string }) => {
+              const pct = of ? Math.round((100 * done) / of) : null
+              return (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-[11px] text-muted-foreground">{label}</p>
+                  <p className="mt-1 flex items-baseline gap-1.5"><span className="text-xl font-semibold tabular-nums">{pct === null ? '-' : `${pct}%`}</span><span className="text-xs text-muted-foreground tabular-nums">{done} of {of}</span></p>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"><div className={cn('h-full rounded-full', color)} style={{ width: `${pct ?? 0}%` }} /></div>
+                </div>
+              )
+            }
             return (
-              <div className="grid gap-4 lg:grid-cols-3">
-                <Card className="lg:col-span-2">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Workload vs delivery</CardTitle>
-                    <CardDescription>
-                      {cur
-                        ? `${cur.unique_tickets} tickets worked on (${cur.carried_in} carried over from before the period, ${cur.new_in_period} new) | ${cur.completed} completed (${fmtNum(cur.completed_pct ?? 0, 0)}%)${cur.avg_cycle_days !== null ? ` | average ${fmtNum(cur.avg_cycle_days, 1)} days to complete${cur.team_avg_cycle_days !== null ? ` (team ${fmtNum(cur.team_avg_cycle_days, 1)})` : ''}` : ''}${cur.overdue ? ` | ${cur.overdue} overdue` : ''}.`
-                        : 'No activity in the period.'}
-                    </CardDescription>
+              <div className="grid gap-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle>Ticket summary</CardTitle>
+                    <CardDescription>{perf.data.current.period.label} compared with the previous period ({perf.data.previous.period.label}). Green change = improvement, red = deterioration.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {cur && (
                       <div className="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <p className="mb-1 text-[11px] text-muted-foreground">Assigned to completed</p>
-                          <BarCell value={cur.completed} max={cur.unique_tickets} label={`${cur.completed} of ${cur.unique_tickets}`} pct={cur.completed_pct} />
-                        </div>
-                        <div>
-                          <p className="mb-1 text-[11px] text-muted-foreground">Carried over to completed</p>
-                          <BarCell value={cur.completed_carried} max={cur.carried_in} label={`${cur.completed_carried} of ${cur.carried_in}`} pct={cur.carried_in ? (100 * cur.completed_carried) / cur.carried_in : null} color="bg-slate-500" />
-                        </div>
-                        <div>
-                          <p className="mb-1 text-[11px] text-muted-foreground">New this period to completed</p>
-                          <BarCell value={cur.completed_new} max={cur.new_in_period} label={`${cur.completed_new} of ${cur.new_in_period}`} pct={cur.new_in_period ? (100 * cur.completed_new) / cur.new_in_period : null} color="bg-blue-500" />
-                        </div>
+                        <Rate label="Assigned to completed" done={cur.completed} of={cur.unique_tickets} color="bg-green-500" />
+                        <Rate label="Carried over to completed" done={cur.completed_carried} of={cur.carried_in} color="bg-slate-500" />
+                        <Rate label="New this period to completed" done={cur.completed_new} of={cur.new_in_period} color="bg-blue-500" />
                       </div>
                     )}
-                    <div>
-                      <p className="mb-1 text-[11px] text-muted-foreground">Week by week - tickets started vs completed (shows when work arrived and when it got done)</p>
-                      <GroupedBarChart data={weeklyRows} series={[{ key: 'started', label: 'Started', color: 'blue' }, { key: 'completed', label: 'Completed', color: 'green' }, { key: 'worked', label: 'Worked on', color: 'grey' }]} height={220} />
+                    <div className="grid gap-3 lg:grid-cols-3">
+                      {groups.map((g) => {
+                        const ms = g.keys.map((k) => metricByKey.get(k)).filter((m): m is NonNullable<typeof m> => !!m)
+                        if (!ms.length) return null
+                        return (
+                          <div key={g.title} className="overflow-hidden rounded-lg border">
+                            <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              <span className={cn('h-2 w-2 rounded-sm', g.tone)} />{g.title}
+                              <span className="ml-auto flex gap-4 normal-case tracking-normal"><span className="w-10 text-right">Now</span><span className="w-10 text-right">Prev</span><span className="w-14 text-center">Change</span></span>
+                            </div>
+                            <ul>
+                              {ms.map((m) => {
+                                const c = Number(m.current ?? 0)
+                                return (
+                                  <li key={m.key} className={cn('flex items-center gap-2 border-b border-border/60 px-3 py-2 text-xs last:border-0 hover:bg-muted/40', m.key === 'blocked' && c > 0 && 'bg-red-500/[0.05]')} title={m.hint}>
+                                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: swatch[m.key] ?? '#64748b' }} />
+                                    <span className={cn('min-w-0 flex-1 truncate', ['unique_tickets', 'completed'].includes(m.key) && 'font-medium')}>{m.label}</span>
+                                    <span className="flex items-center gap-4 tabular-nums">
+                                      <span className="w-10 text-right text-sm font-semibold">{fmtVal(m.current)}</span>
+                                      <span className="w-10 text-right text-muted-foreground">{fmtVal(m.previous)}</span>
+                                      <span className="w-14 text-center"><Change m={m} /></span>
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          </div>
+                        )
+                      })}
                     </div>
-                    {mine && <WeeklyTimeline data={{ weeks: weekly.weeks, employees: [mine] }} compact />}
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Ticket summary</CardTitle>
-                    <CardDescription>{cur ? `${cur.unique_tickets} assigned | ${cur.completed} completed | ${cur.in_progress} in progress` : 'No activity in the period'}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <table className="w-full text-xs">
-                      <thead className="text-muted-foreground">
-                        <tr className="border-b">
-                          <th className="px-3 py-1.5 text-left font-medium">Metric</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Current</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Previous</th>
-                          <th className="px-3 py-1.5 text-right font-medium">Change</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cur && (
-                          <>
-                            <tr className="border-b bg-muted/30" title="Average days from first appearance to completion (completed tickets only)">
-                              <td className="px-3 py-1.5">Average days to complete</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums">{cur.avg_cycle_days === null ? '-' : fmtNum(cur.avg_cycle_days, 1)}</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{p.previous?.avg_cycle_days === null || p.previous?.avg_cycle_days === undefined ? '-' : fmtNum(p.previous.avg_cycle_days, 1)}</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{cur.team_avg_cycle_days !== null ? `team ${fmtNum(cur.team_avg_cycle_days, 1)}` : '-'}</td>
-                            </tr>
-                            <tr className="border-b bg-muted/30" title="Tickets first worked on before the period vs inside it">
-                              <td className="px-3 py-1.5">Carried over / new</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums">{cur.carried_in} / {cur.new_in_period}</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{p.previous ? `${p.previous.carried_in} / ${p.previous.new_in_period}` : '-'}</td>
-                              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">-</td>
-                            </tr>
-                          </>
-                        )}
-                        {p.metrics.map((m) => (
-                          <tr key={m.key} className={cn('border-b last:border-0', ['unique_tickets', 'completed', 'in_progress'].includes(m.key) && 'font-medium')} title={m.hint}>
-                            <td className="px-3 py-1.5">{m.label}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">{fmtVal(m.current)}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{fmtVal(m.previous)}</td>
-                            <td className={cn('px-3 py-1.5 text-right tabular-nums', m.delta === null || m.delta === 0 ? 'text-muted-foreground' : (m.delta > 0) === !['blocked', 'overdue', 'on_hold', 'backlog'].includes(m.key) ? 'text-green-600' : 'text-red-600')}>{m.delta === null ? '-' : `${m.delta > 0 ? '+' : ''}${fmtNum(m.delta, 0)}`}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </CardContent>
-                </Card>
-                <ChartCard title="Ticket status - current vs previous period" description={`${perf.data.current.period.label} vs ${perf.data.previous.period.label}.`} className="lg:col-span-3" height={260}>
-                  <GroupedBarChart data={statusRows} series={[{ key: 'current', label: 'Current period', color: 'blue' }, { key: 'previous', label: 'Previous period', color: 'grey' }]} height={260} />
-                </ChartCard>
-                <Card className="lg:col-span-3">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Performance trend</CardTitle>
                     <CardDescription>Per day in the period: tickets touched, completed, in-progress / pending / blocked rows, deployments. Chart on top, same numbers in the table below.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <TrendBarChart data={trend} series={[{ key: 'completed_activities', label: 'Completed', color: '#16a34a' }, { key: 'in_progress_activities', label: 'In progress', color: '#2563eb' }, { key: 'pending_activities', label: 'Pending / on hold', color: '#f97316' }, { key: 'blocked_activities', label: 'Blocked', color: '#dc2626' }]} />
+                    <TrendBarChart data={trend} series={[{ key: 'completed_activities', label: 'Completed', color: 'green' }, { key: 'in_progress_activities', label: 'In progress', color: 'blue' }, { key: 'pending_activities', label: 'Pending / on hold', color: 'orange' }, { key: 'blocked_activities', label: 'Blocked', color: 'red' }]} height={260} />
                     <div className="max-h-72 overflow-auto rounded-md border">
                       <table className="w-full text-xs">
                         <thead className="sticky top-0 bg-muted text-muted-foreground">
@@ -249,25 +224,22 @@ export default function EmployeeDetailPage() {
                 <ChartCard title="Ticket status distribution" description="Unique tickets by latest status. Click to filter the tables.">
                   <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                 </ChartCard>
-                <ChartCard title="Completed vs in progress" description="Unique tickets.">
-                  <CategoryBarChart data={d.charts.ticket_status.filter((c) => ['completed', 'deployed', 'in_progress', 'development', 'testing', 'code_review', 'pending', 'on_hold', 'blocked', 'analysis', 'other'].includes(c.key))} onSelect={(k) => toggleValue('status', k)} />
+                <ChartCard title="Work type split" description="Work rows by work type. Click to filter.">
+                  <CategoryBarChart data={d.charts.work_type} onSelect={(k) => toggleValue('work_type', k)} selected={filters.work_type} />
                 </ChartCard>
-                <ChartCard title="Development vs Analysis vs Testing" description="Work rows by work type.">
-                  <CategoryBarChart data={d.charts.work_type} onSelect={(k) => toggleValue('work_type', k)} />
+                <ChartCard title="Open work by status" description="Tickets not yet completed. Blocked and on-hold items need attention. Click to filter.">
+                  <CategoryBarChart data={d.charts.ticket_status.filter((c) => !['completed', 'deployed', 'cancelled', 'other'].includes(c.key))} onSelect={(k) => toggleValue('status', k)} selected={filters.status} />
                 </ChartCard>
               </div>
-              <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-                <ChartCard title="Daily work" description="Work rows per report date.">
-                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_activities', label: 'Completed rows', color: '#16a34a' }]} area />
+              <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-2' : 'lg:grid-cols-1')}>
+                <ChartCard title="Daily work" description="Completed work rows per report date.">
+                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_activities', label: 'Completed rows', color: 'green' }]} area />
                 </ChartCard>
                 {FEATURES.applications && (
                   <ChartCard title="Project / application contribution" description="Work rows by application.">
-                    <NamedBarChart data={d.charts.activities_by_application} onSelect={(n) => toggleValue('application', n)} color="#0d9488" valueLabel="Activities" />
+                    <NamedBarChart data={d.charts.activities_by_application} onSelect={(n) => toggleValue('application', n)} color="teal" valueLabel="Work rows" />
                   </ChartCard>
                 )}
-                <ChartCard title="Blocked & pending work" description="Tickets requiring attention.">
-                  <CategoryBarChart data={d.charts.ticket_status.filter((c) => ['blocked', 'pending', 'on_hold', 'reopened', 'analysis'].includes(c.key))} onSelect={(k) => toggleValue('status', k)} />
-                </ChartCard>
               </div>
               <InsightsPanel insights={d.insights} title="Observations" max={8} />
             </TabsContent>
@@ -293,9 +265,12 @@ export default function EmployeeDetailPage() {
             </TabsContent>
 
             <TabsContent value="dev" className="space-y-4">
-              <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-2' : 'lg:grid-cols-1')}>
-                <ChartCard title="Dev deployment status" description="Work rows by Dev Deployment Status.">
-                  <DonutChart data={d.charts.dev_deployment} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="activities" />
+              <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
+                <ChartCard title="Dev deployment status" description="Work rows by dev deployment status. Click to filter.">
+                  <DonutChart data={d.charts.dev_deployment} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="work rows" />
+                </ChartCard>
+                <ChartCard title="Daily dev deployment trend" description="Deployed and pending work rows per report date.">
+                  <TrendBarChart data={d.charts.trend} series={[{ key: 'dev_deployed', label: 'Deployed', color: 'green' }, { key: 'dev_pending', label: 'Pending', color: 'orange' }]} />
                 </ChartCard>
                 {FEATURES.applications && (
                   <ChartCard title="Dev deployment by application">
@@ -313,11 +288,11 @@ export default function EmployeeDetailPage() {
 
             <TabsContent value="prod" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-2">
-                <ChartCard title="Production deployment status" description="Production Deployment Summary rows.">
+                <ChartCard title="Production deployment status" description="Release records by status. Click to filter.">
                   <DonutChart data={d.charts.prod_deployment} onSelect={(k) => toggleValue('prod_deployment', k)} selected={filters.prod_deployment} centerLabel="releases" />
                 </ChartCard>
                 <ChartCard title="Production release activity" description="Release records per date.">
-                  <TrendBarChart data={d.charts.release_trend} series={PROD_SERIES.map((s) => ({ key: s.key, label: s.label, color: s.color === 'green' ? '#16a34a' : s.color === 'red' ? '#dc2626' : s.color === 'orange' ? '#f97316' : s.color === 'blue' ? '#2563eb' : '#6b7280' }))} />
+                  <TrendBarChart data={d.charts.release_trend} series={PROD_SERIES} />
                 </ChartCard>
               </div>
               <Card>
@@ -333,10 +308,10 @@ export default function EmployeeDetailPage() {
                 <>
                   <div className="grid gap-4 lg:grid-cols-2">
                     <ChartCard title="Daily completed ticket trend" description="First report date each ticket was marked completed.">
-                      <TrendChart data={perf.data.current.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'unique_tickets', label: 'Tickets reported', color: '#2563eb', dashed: true }]} />
+                      <TrendChart data={perf.data.current.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'unique_tickets', label: 'Tickets reported', color: 'blue', dashed: true }]} />
                     </ChartCard>
                     <ChartCard title="Status mix over time" description="Work rows by status per report date.">
-                      <TrendBarChart data={perf.data.current.trend} series={[{ key: 'completed_activities', label: 'Completed', color: '#16a34a' }, { key: 'in_progress_activities', label: 'In progress', color: '#2563eb' }, { key: 'pending_activities', label: 'Pending', color: '#f97316' }, { key: 'blocked_activities', label: 'Blocked', color: '#dc2626' }]} />
+                      <TrendBarChart data={perf.data.current.trend} series={[{ key: 'completed_activities', label: 'Completed', color: 'green' }, { key: 'in_progress_activities', label: 'In progress', color: 'blue' }, { key: 'pending_activities', label: 'Pending', color: 'orange' }, { key: 'blocked_activities', label: 'Blocked', color: 'red' }]} />
                     </ChartCard>
                   </div>
                   <Card>

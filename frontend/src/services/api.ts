@@ -5,7 +5,6 @@ import type {
   DataQuality,
   DataStatus,
   Dimensions,
-  EmployeeRow,
   EmployeeSummary,
   EmployeesList,
   EmployeesPerformance,

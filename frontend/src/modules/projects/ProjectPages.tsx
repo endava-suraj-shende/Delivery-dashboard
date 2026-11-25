@@ -134,23 +134,23 @@ export function ProjectDetailPage() {
             </TabsList>
             <TabsContent value="overview" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-3">
-                <ChartCard title="Project Jira status distribution">
+                <ChartCard title="Ticket status" description="Unique tickets by latest status. Click to filter.">
                   <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                 </ChartCard>
-                <ChartCard title="Employee-wise work distribution" description="Ticket status per employee in this project." className="lg:col-span-2">
+                <ChartCard title="Work status by employee" description="Tickets per person in this project by latest status. Click a bar to open the employee." className="lg:col-span-2">
                   <StackedBarChart data={d.charts.status_by_employee} series={STATUS_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} />
                 </ChartCard>
               </div>
               <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-                <ChartCard title="Daily completion trend">
-                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
+                <ChartCard title="Daily completion trend" description="Completed tickets per report date.">
+                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }]} />
                 </ChartCard>
                 {FEATURES.applications && (
                   <ChartCard title="Application-wise ticket distribution">
                     <StackedBarChart data={d.charts.status_by_application} series={STATUS_SERIES} onSelect={(n) => toggleValue('application', n)} />
                   </ChartCard>
                 )}
-                <ChartCard title="Employee contribution comparison" description="Work rows by work type.">
+                <ChartCard title="Work type by employee" description="Work rows per person by work type. Click a bar to open the employee.">
                   <StackedBarChart data={d.charts.type_by_employee} series={TYPE_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} />
                 </ChartCard>
               </div>
@@ -187,10 +187,10 @@ export function ProjectDetailPage() {
             </TabsContent>
             <TabsContent value="deploy" className="space-y-4">
               <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-                <ChartCard title="Deployment summary" description="Dev deployment status of work rows.">
-                  <DonutChart data={d.charts.dev_deployment} centerLabel="activities" onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} />
+                <ChartCard title="Dev deployment summary" description="Work rows by dev deployment status. Click to filter.">
+                  <DonutChart data={d.charts.dev_deployment} centerLabel="work rows" onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} />
                 </ChartCard>
-                <ChartCard title="Production release summary">
+                <ChartCard title="Production release summary" description="Release records by status. Click to filter.">
                   <DonutChart data={d.charts.prod_deployment} centerLabel="releases" onSelect={(k) => toggleValue('prod_deployment', k)} selected={filters.prod_deployment} />
                 </ChartCard>
                 {FEATURES.applications && (
@@ -199,7 +199,7 @@ export function ProjectDetailPage() {
                   </ChartCard>
                 )}
               </div>
-              <ChartCard title="Production releases by employee">
+              <ChartCard title="Production releases by employee" description="Release records per person by status.">
                 <StackedBarChart data={d.charts.prod_by_employee} series={PROD_SERIES} />
               </ChartCard>
               <Card>

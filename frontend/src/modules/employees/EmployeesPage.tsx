@@ -6,7 +6,8 @@ import { Activity, AlertOctagon, CheckCircle2, Hourglass, Ticket, Users, UserX }
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { DataTable } from '@/components/common/DataTable'
-import { ChartCard, DonutChart, GroupedBarChart, StackedBarChart, TrendChart, type StackSeries } from '@/components/charts'
+import { ChartCard, DonutChart, StackedBarChart, TrendChart, CHART_HEIGHT_TALL, type StackSeries } from '@/components/charts'
+import { EmployeeSnapshotTable } from '@/components/common/EmployeeSnapshotTable'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -92,7 +93,6 @@ export default function EmployeesPage() {
   const go = (n: string) => nav(`/employees/${encodeURIComponent(n)}${qs}`)
   const d = q.data
   const rows = d?.items ?? []
-  const assignedVsDone = useMemo(() => rows.map((r) => ({ name: r.employee, assigned: r.unique_tickets, completed: r.completed, in_progress: r.in_progress })).sort((a, b) => b.assigned - a.assigned), [rows])
   const totals = useMemo(() => {
     const sum = (k: keyof EmployeeRow) => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0)
     return { assigned: sum('unique_tickets'), completed: sum('completed'), in_progress: sum('in_progress'), code_review: sum('code_review'), testing: sum('testing_tickets'), backlog: sum('backlog'), on_hold: sum('on_hold'), blocked: sum('blocked'), dev: sum('dev_deployed'), prod: sum('production_released') }
@@ -122,26 +122,26 @@ export default function EmployeesPage() {
           </KpiGrid>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <ChartCard title="Assigned vs completed" description="Unique tickets per person: assigned, completed and still in progress." className="lg:col-span-2">
-              <GroupedBarChart data={assignedVsDone.slice(0, 20)} series={[{ key: 'assigned', label: 'Assigned', color: 'grey' }, { key: 'completed', label: 'Completed', color: 'green' }, { key: 'in_progress', label: 'In progress', color: 'blue' }]} height={Math.max(260, Math.min(assignedVsDone.length, 20) * 18 + 120)} />
-            </ChartCard>
-            <ChartCard title="Ticket status (all selected people)" description="Unique tickets by latest status.">
+            <ChartCard title="Ticket status (all selected people)" description="Unique tickets by latest status. Click to filter." height={CHART_HEIGHT_TALL}>
               {team.data ? <DonutChart data={team.data.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" /> : <LoadingState rows={1} />}
+            </ChartCard>
+            <ChartCard title="Work status by employee" description="Tickets per person by latest status, sorted by total. Click a bar to open the employee." className="lg:col-span-2" height={CHART_HEIGHT_TALL}>
+              <StackedBarChart data={rows.map((r) => ({ name: r.employee, ...Object.fromEntries(EMP_STATUS_SERIES.map((s) => [s.key, Number(r[s.key as keyof EmployeeRow] ?? 0)])) }))} series={EMP_STATUS_SERIES} onSelect={go} max={40} />
             </ChartCard>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Work status by employee" description="Completed, in development, code review, testing, ready, backlog, on hold, blocked.">
-              <StackedBarChart data={rows.map((r) => ({ name: r.employee, ...Object.fromEntries(EMP_STATUS_SERIES.map((s) => [s.key, Number(r[s.key as keyof EmployeeRow] ?? 0)])) }))} series={EMP_STATUS_SERIES} onSelect={go} max={30} />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ChartCard title="Assigned vs completed" description="Unique tickets per person. Bar length = assigned (relative to the busiest person); green = completed, blue = in progress. Click a row to open the employee." height="auto">
+              <EmployeeSnapshotTable variant="assigned" rows={rows} onRow={go} pageSize={10} />
             </ChartCard>
-            <ChartCard title="Deployments by employee" description="Dev deployments and production releases deployed.">
-              <GroupedBarChart data={rows.map((r) => ({ name: r.employee, dev: r.dev_deployed, prod: r.production_released })).filter((r) => Number(r.dev) + Number(r.prod) > 0)} series={[{ key: 'dev', label: 'Dev deployed', color: 'teal' }, { key: 'prod', label: 'Prod deployed', color: 'purple' }]} />
+            <ChartCard title="Deployments by employee" description="Dev deployments and production releases per person. Bar = deployed total (teal dev, purple production). Click a row to open the employee." height="auto">
+              <EmployeeSnapshotTable variant="deploy" rows={rows} onRow={go} pageSize={10} />
             </ChartCard>
           </div>
 
           {team.data && (
             <ChartCard title="Completion trend" description="Completed tickets and open backlog per day across the selected people.">
-              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
+              <TrendChart data={team.data.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'backlog', label: 'Open backlog', color: 'orange', dashed: true }]} />
             </ChartCard>
           )}
 

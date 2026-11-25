@@ -11,6 +11,7 @@ const TONE: Record<string, string> = {
   blue: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
   indigo: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400',
   purple: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
+  teal: 'bg-teal-500/10 text-teal-700 dark:text-teal-400',
   orange: 'bg-orange-500/10 text-orange-700 dark:text-orange-400',
   yellow: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
   red: 'bg-red-500/15 text-red-700 dark:text-red-400 font-semibold',
@@ -47,9 +48,83 @@ function pill(key: keyof EmployeeRow, header: string, tone: string): ColumnDef<E
 }
 
 /** Compact executive view: one row per employee with exact counts, a progress bar and highlighted exceptions. */
-export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'delivery' }: { rows: EmployeeRow[]; onRow?: (name: string) => void; pageSize?: number; variant?: 'delivery' | 'open' }) {
+export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'delivery' }: { rows: EmployeeRow[]; onRow?: (name: string) => void; pageSize?: number; variant?: 'delivery' | 'open' | 'assigned' | 'deploy' }) {
   const columns = useMemo<ColumnDef<EmployeeRow, unknown>[]>(() => {
     const employee: ColumnDef<EmployeeRow, unknown> = { accessorKey: 'employee', header: 'Employee', cell: ({ row }) => <EmployeeCell name={row.original.employee} /> }
+    if (variant === 'assigned') {
+      const maxAssigned = Math.max(1, ...rows.map((r) => r.unique_tickets))
+      return [
+        employee,
+        { accessorKey: 'unique_tickets', header: 'Assigned', ...right, cell: ({ getValue }) => <span className="font-semibold tabular-nums">{getValue() as number}</span> },
+        pill('completed', 'Completed', 'green'),
+        pill('in_progress', 'In progress', 'blue'),
+        {
+          id: 'remaining',
+          accessorFn: (r) => Math.max(0, r.unique_tickets - r.completed - r.in_progress),
+          header: 'Not started',
+          ...right,
+          cell: ({ getValue }) => <Pill value={getValue() as number} tone="orange" />,
+        },
+        {
+          id: 'completion',
+          accessorFn: (r) => (r.unique_tickets ? r.completed / r.unique_tickets : 0),
+          header: 'Completed vs assigned',
+          cell: ({ row }) => {
+            const r = row.original
+            const done = r.unique_tickets ? Math.round((100 * r.completed) / r.unique_tickets) : 0
+            const prog = r.unique_tickets ? Math.round((100 * r.in_progress) / r.unique_tickets) : 0
+            const scale = (100 * r.unique_tickets) / maxAssigned
+            return (
+              <div className="flex min-w-[200px] items-center gap-2" title={`${r.completed} completed, ${r.in_progress} in progress of ${r.unique_tickets} assigned`}>
+                <div className="h-2.5 flex-1 rounded-full bg-transparent">
+                  <div className="flex h-full overflow-hidden rounded-full bg-muted" style={{ width: `${Math.max(scale, 4)}%` }}>
+                    <div className="h-full bg-green-500" style={{ width: `${done}%` }} />
+                    <div className="h-full bg-blue-400/80" style={{ width: `${prog}%` }} />
+                  </div>
+                </div>
+                <span className={cn('w-10 text-right text-xs font-semibold tabular-nums', done >= 50 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground')}>{fmtNum(done, 0)}%</span>
+              </div>
+            )
+          },
+        },
+      ]
+    }
+    if (variant === 'deploy') {
+      const maxTotal = Math.max(1, ...rows.map((r) => r.dev_deployed + r.production_released))
+      return [
+        employee,
+        pill('dev_deployed', 'Dev deployed', 'teal'),
+        pill('dev_pending', 'Dev pending', 'orange'),
+        pill('production_released', 'Prod released', 'purple'),
+        {
+          id: 'prod_pending',
+          accessorFn: (r) => Math.max(0, r.production_releases - r.production_released),
+          header: 'Prod pending',
+          ...right,
+          cell: ({ getValue }) => <Pill value={getValue() as number} tone="orange" />,
+        },
+        {
+          id: 'deploy_total',
+          accessorFn: (r) => r.dev_deployed + r.production_released,
+          header: 'Deployed total',
+          cell: ({ row }) => {
+            const r = row.original
+            const total = r.dev_deployed + r.production_released
+            return (
+              <div className="flex min-w-[180px] items-center gap-2" title={`${r.dev_deployed} dev, ${r.production_released} production`}>
+                <div className="h-2.5 flex-1">
+                  <div className="flex h-full overflow-hidden rounded-full bg-muted" style={{ width: `${Math.max((100 * total) / maxTotal, total ? 4 : 0)}%` }}>
+                    <div className="h-full bg-teal-500" style={{ width: `${total ? (100 * r.dev_deployed) / total : 0}%` }} />
+                    <div className="h-full bg-purple-500" style={{ width: `${total ? (100 * r.production_released) / total : 0}%` }} />
+                  </div>
+                </div>
+                <span className="w-7 text-right text-xs font-semibold tabular-nums">{total}</span>
+              </div>
+            )
+          },
+        },
+      ]
+    }
     if (variant === 'open') {
       return [
         employee,
@@ -115,10 +190,10 @@ export function EmployeeSnapshotTable({ rows, onRow, pageSize = 15, variant = 'd
       onRowClick={onRow ? (r) => onRow(r.employee) : undefined}
       pageSize={pageSize}
       dense
-      exportName={variant === 'open' ? 'employee-open-work' : 'employee-snapshot'}
+      exportName={variant === 'open' ? 'employee-open-work' : variant === 'assigned' ? 'employee-assigned-vs-completed' : variant === 'deploy' ? 'employee-deployments' : 'employee-snapshot'}
       searchPlaceholder="Search employee"
-      initialSorting={[{ id: variant === 'open' ? 'open_total' : 'unique_tickets', desc: true }]}
-      rowClassName={(r) => (r.blocked > 0 ? 'bg-red-500/[0.05]' : undefined)}
+      initialSorting={[{ id: variant === 'open' ? 'open_total' : variant === 'deploy' ? 'deploy_total' : 'unique_tickets', desc: true }]}
+      rowClassName={(r) => (variant !== 'deploy' && r.blocked > 0 ? 'bg-red-500/[0.05]' : undefined)}
     />
   )
 }

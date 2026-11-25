@@ -86,11 +86,11 @@ export function ComparePage() {
             })}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title={`Period A | ${q.data.a.period.label}`} description={`${q.data.a.period.report_count} reports`}>
-              <TrendChart data={q.data.a.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
+            <ChartCard title={`Period A: ${q.data.a.period.label}`} description={`${q.data.a.period.report_count} reports`}>
+              <TrendChart data={q.data.a.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }]} />
             </ChartCard>
-            <ChartCard title={`Period B | ${q.data.b.period.label}`} description={`${q.data.b.period.report_count} reports`}>
-              <TrendChart data={q.data.b.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }]} />
+            <ChartCard title={`Period B: ${q.data.b.period.label}`} description={`${q.data.b.period.report_count} reports`}>
+              <TrendChart data={q.data.b.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }]} />
             </ChartCard>
           </div>
           <Card>

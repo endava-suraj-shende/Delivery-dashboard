@@ -10,7 +10,7 @@ import { LoadingState, ErrorState } from '@/components/common/States'
 import { useDimensions } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { jiraApi } from '@/services/api'
-import { fmtDate, truncate } from '@/lib/utils'
+import { cn, fmtDate, truncate } from '@/lib/utils'
 import { FEATURES } from '@/lib/features'
 
 /** Drop application-wise columns while that feature is hidden. */
@@ -39,24 +39,19 @@ export function CategoryCell({ dim, value, raw }: { dim: 'work_status' | 'work_t
   const meta = lookup[dim]?.[value]
   const label = meta?.label ?? value
   const differs = raw && raw.toLowerCase() !== label.toLowerCase()
+  // Show the mapped category only; the original source value stays available on hover.
   return (
-    <StatusBadge color={meta?.color} title={raw ? `Excel value: ${raw}` : undefined}>
-      {raw && differs ? (
-        <span>
-          {raw} <span className="opacity-60">(mapped to {label})</span>
-        </span>
-      ) : (
-        (raw ?? label)
-      )}
+    <StatusBadge color={meta?.color} title={differs ? `Source value: ${raw}` : undefined}>
+      <span className="whitespace-nowrap">{label}</span>
     </StatusBadge>
   )
 }
 
-export function TicketLink({ id, link, onOpen }: { id: string | null; link?: string | null; onOpen?: (id: string) => void }) {
+export function TicketLink({ id, link, onOpen, chip }: { id: string | null; link?: string | null; onOpen?: (id: string) => void; chip?: boolean }) {
   if (!id) return <span className="text-xs text-muted-foreground">-</span>
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <button className="font-medium text-primary hover:underline" onClick={(e) => { e.stopPropagation(); onOpen?.(id) }}>
+      <button className={cn('font-medium text-primary hover:underline', chip && 'rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 font-mono text-[11px] hover:bg-primary/10 hover:no-underline')} onClick={(e) => { e.stopPropagation(); onOpen?.(id) }}>
         {id}
       </button>
       {link && (
@@ -68,11 +63,23 @@ export function TicketLink({ id, link, onOpen }: { id: string | null; link?: str
   )
 }
 
-export function EmployeeLink({ name }: { name: string | null }) {
+const AVATAR = ['bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500', 'bg-indigo-500', 'bg-orange-500']
+function avatarColor(name: string): string {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return AVATAR[h % AVATAR.length]
+}
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
+}
+
+export function EmployeeLink({ name, avatar }: { name: string | null; avatar?: boolean }) {
   const { queryString } = useFilters()
   if (!name) return <span className="text-muted-foreground">-</span>
   return (
-    <Link to={`/employees/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="hover:underline whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+    <Link to={`/employees/${encodeURIComponent(name)}${queryString ? `?${queryString}` : ''}`} className="inline-flex items-center gap-2 whitespace-nowrap font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+      {avatar && <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white', avatarColor(name))}>{initials(name)}</span>}
       {name}
     </Link>
   )
@@ -89,18 +96,18 @@ export function ProjectLink({ name }: { name: string | null }) {
 }
 
 // ------------------------------------------------------------------ activity table
-export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }: { items: Activity[]; onTicket?: (id: string) => void; hideEmployee?: boolean; pageSize?: number }) {
+export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25, hideColumns = [] }: { items: Activity[]; onTicket?: (id: string) => void; hideEmployee?: boolean; pageSize?: number; hideColumns?: string[] }) {
   const lookup = useCategoryLookup()
   const columns = useMemo<ColumnDef<Activity, unknown>[]>(() => {
     const cols: ColumnDef<Activity, unknown>[] = [
-      { accessorKey: 'report_date', header: 'Date', cell: ({ getValue }) => <span className="whitespace-nowrap">{fmtDate(getValue() as string)}</span>, size: 100 },
+      { accessorKey: 'report_date', header: 'Date', cell: ({ getValue }) => <span className="whitespace-nowrap tabular-nums text-muted-foreground">{fmtDate(getValue() as string)}</span>, size: 100 },
     ]
-    if (!hideEmployee) cols.push({ accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} /> })
+    if (!hideEmployee) cols.push({ accessorKey: 'employee', header: 'Employee', cell: ({ getValue }) => <EmployeeLink name={getValue() as string} avatar /> })
     cols.push(
       { accessorKey: 'project', header: 'Project / Team', cell: ({ getValue }) => <ProjectLink name={getValue() as string} /> },
       { accessorKey: 'application', header: 'Application' },
-      { accessorKey: 'jira_board', header: 'Jira Board' },
-      { id: 'ticket', accessorFn: (r) => r.ticket_id ?? r.ticket_raw ?? '', header: 'Jira Ticket', cell: ({ row }) => (row.original.ticket_id ? <TicketLink id={row.original.ticket_id} link={row.original.ticket_link} onOpen={onTicket} /> : <span className="text-xs text-muted-foreground italic">{row.original.ticket_raw ?? 'no id'}</span>) },
+      { accessorKey: 'jira_board', header: 'Jira Board', cell: ({ getValue }) => <span className="whitespace-nowrap text-muted-foreground">{(getValue() as string) || '-'}</span> },
+      { id: 'ticket', accessorFn: (r) => r.ticket_id ?? r.ticket_raw ?? '', header: 'Jira Ticket', cell: ({ row }) => (row.original.ticket_id ? <TicketLink id={row.original.ticket_id} link={row.original.ticket_link} onOpen={onTicket} chip /> : <span className="text-xs text-muted-foreground italic">{row.original.ticket_raw ?? 'no id'}</span>) },
       { accessorKey: 'work_details', header: 'Work details', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 90)}</span>, size: 320 },
       { accessorKey: 'work_type', header: 'Type', cell: ({ row }) => <CategoryCell dim="work_type" value={row.original.work_type} raw={row.original.work_type_raw} />, filterFn: 'equalsString' },
       { accessorKey: 'work_status', header: 'Work Status', cell: ({ row }) => <CategoryCell dim="work_status" value={row.original.work_status} raw={row.original.work_status_raw} />, filterFn: 'equalsString' },
@@ -109,8 +116,9 @@ export function ActivitiesTable({ items, onTicket, hideEmployee, pageSize = 25 }
       { accessorKey: 'comments', header: 'Additional notes', cell: ({ getValue }) => <span title={getValue() as string}>{truncate(getValue() as string, 70)}</span>, size: 260 },
       { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => <span className="text-[11px] text-muted-foreground whitespace-nowrap" title={row.original.file_name}>{truncate(row.original.file_name, 28)} | r{row.original.source_row}</span> },
     )
-    return withFeatures(cols)
-  }, [hideEmployee, onTicket])
+    const visible = hideColumns.length ? cols.filter((c) => !hideColumns.includes(('accessorKey' in c ? String(c.accessorKey) : c.id) ?? '')) : cols
+    return withFeatures(visible)
+  }, [hideEmployee, onTicket, hideColumns])
   const opts = (dim: keyof typeof lookup) => Object.values(lookup[dim]).map((c) => ({ value: c.key, label: c.label }))
   return (
     <DataTable

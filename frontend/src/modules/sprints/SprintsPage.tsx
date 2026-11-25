@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, AlertOctagon, CheckCircle2, Hourglass, Rocket, Ticket, Users, Zap, Filter, X, SearchCheck } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, GroupedBarChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES } from '@/components/charts'
+import { ChartCard, DonutChart, GroupedBarChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/States'
 import { DataTable } from '@/components/common/DataTable'
@@ -181,14 +181,14 @@ export default function SprintsPage() {
                       <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                     </ChartCard>
                     <ChartCard title="Sprint burn trend" description="Completed tickets per day and open backlog within the sprint." className="lg:col-span-2">
-                      <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: '#16a34a' }, { key: 'backlog', label: 'Open backlog', color: '#f97316', dashed: true }]} />
+                      <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed tickets', color: 'green' }, { key: 'backlog', label: 'Open backlog', color: 'orange', dashed: true }]} />
                     </ChartCard>
                   </div>
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <ChartCard title="Status by person" description="Unique tickets per assignee, stacked by latest status.">
+                    <ChartCard title="Status by person" description="Unique tickets per assignee by latest status. Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
                       <StackedBarChart data={d.charts.status_by_employee} series={STATUS_SERIES} onSelect={goEmployee} max={30} />
                     </ChartCard>
-                    <ChartCard title="Work type by person" description="Work rows by work type.">
+                    <ChartCard title="Work type by person" description="Work rows per assignee by work type. Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
                       <StackedBarChart data={d.charts.type_by_employee} series={TYPE_SERIES} onSelect={goEmployee} max={30} />
                     </ChartCard>
                   </div>
@@ -255,10 +255,10 @@ export default function SprintsPage() {
                           }
                           height={340}
                         >
-                          <GroupedBarChart data={rows} series={[{ key: 'committed', label: 'Committed', color: 'grey' }, { key: 'completed', label: 'Completed', color: 'green' }]} height={340} labelFormatter={shortName} />
+                          <GroupedBarChart data={rows} series={[{ key: 'committed', label: 'Committed', color: 'slate' }, { key: 'completed', label: 'Completed', color: 'green' }]} labelFormatter={shortName} />
                         </ChartCard>
                         <ChartCard title="Completed velocity trend" description={`Completed ${unitLabel} per sprint with the average as a reference (${rangeLabel}).`} height={260}>
-                          <TrendChart data={shown.map((s) => ({ date: shortName(s.name), completed: s.completed, average: avgAll ?? 0 }))} series={[{ key: 'completed', label: 'Completed', color: '#16a34a' }, { key: 'average', label: 'Average', color: '#6b7280', dashed: true }]} height={260} />
+                          <TrendChart data={shown.map((s) => ({ date: shortName(s.name), completed: s.completed, average: avgAll ?? 0 }))} series={[{ key: 'completed', label: 'Completed', color: 'green' }, { key: 'average', label: 'Average', color: 'slate', dashed: true }]} />
                         </ChartCard>
                         <Card>
                           <CardHeader>
@@ -301,11 +301,11 @@ export default function SprintsPage() {
 
                 <TabsContent value="employees" className="space-y-4">
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <ChartCard title="Completed tickets by person">
-                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.completed_total) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="#16a34a" max={30} valueLabel="Completed" />
+                    <ChartCard title="Completed tickets by person" description="Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
+                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.completed_total) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="green" max={40} valueLabel="Completed" />
                     </ChartCard>
-                    <ChartCard title="Blocked tickets by person">
-                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="#dc2626" max={30} valueLabel="Blocked" />
+                    <ChartCard title="Blocked tickets by person" description="Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
+                      <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0).sort((a, b) => b.value - a.value)} onSelect={goEmployee} color="red" max={40} valueLabel="Blocked" />
                     </ChartCard>
                   </div>
                   <Card>

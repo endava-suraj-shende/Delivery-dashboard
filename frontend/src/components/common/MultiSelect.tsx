@@ -12,7 +12,7 @@ export interface Option {
   count?: number
 }
 
-export function MultiSelect({ label, options, value, onChange, className, placeholder = 'All', width = 'w-[200px]', single = false }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void; className?: string; placeholder?: string; width?: string; single?: boolean }) {
+export function MultiSelect({ label, options, value, onChange, className, placeholder = 'All', width = 'w-auto max-w-[220px]', single = false }: { label: string; options: Option[]; value: string[]; onChange: (v: string[]) => void; className?: string; placeholder?: string; width?: string; single?: boolean }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const filtered = useMemo(() => options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase())), [options, q])
@@ -20,10 +20,10 @@ export function MultiSelect({ label, options, value, onChange, className, placeh
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className={cn('justify-between font-normal', width, className)} title={label}>
+        <Button variant="outline" size="sm" className={cn('h-8 justify-between gap-1 px-2.5 font-normal', width, value.length > 0 && 'border-primary/50 bg-primary/5', className)} title={label}>
           <span className="truncate">
             <span className="text-muted-foreground">{label}: </span>
-            {summary}
+            <span className={cn(value.length > 0 && 'font-medium')}>{summary}</span>
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>

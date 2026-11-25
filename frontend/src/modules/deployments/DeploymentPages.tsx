@@ -7,6 +7,7 @@ import { ChartCard, DonutChart, StackedBarChart, TrendBarChart, DEV_SERIES, PROD
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { ActivitiesTable, ReleasesTable, TicketDialog } from '@/components/common/Tables'
+import { StatusBreakdownTable } from '@/components/common/StatusBreakdownTable'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useFilters } from '@/hooks/useFilters'
@@ -42,16 +43,11 @@ export function DevDeploymentPage() {
             <KpiCard label="Not required" value={dd.not_required} icon={<MinusCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('dev_deployment', 'not_required')} />
             <KpiCard label="Unknown / unmapped" value={dd.other} icon={<HelpCircle className="h-4 w-4" />} tone="grey" compact onClick={() => toggleValue('dev_deployment', 'other')} />
           </KpiGrid>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <ChartCard title="Dev deployment status distribution">
-              <DonutChart data={d.distribution} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="activities" />
+          <div className={cn('grid gap-4', FEATURES.applications ? 'md:grid-cols-2 xl:grid-cols-4' : 'lg:grid-cols-3')}>
+            <ChartCard title="Dev deployment status" description="Work rows by dev deployment status. Click to filter.">
+              <DonutChart data={d.distribution} onSelect={(k) => toggleValue('dev_deployment', k)} selected={filters.dev_deployment} centerLabel="work rows" />
             </ChartCard>
-            <ChartCard title="Dev deployment by employee" className="lg:col-span-2">
-              <StackedBarChart data={d.by_employee} series={DEV_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} max={30} />
-            </ChartCard>
-          </div>
-          <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-            <ChartCard title="Dev deployment by project">
+            <ChartCard title="Dev deployment by project" description="Click a bar to open the project.">
               <StackedBarChart data={d.by_project} series={DEV_SERIES} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} />
             </ChartCard>
             {FEATURES.applications && (
@@ -59,17 +55,20 @@ export function DevDeploymentPage() {
                 <StackedBarChart data={d.by_application} series={DEV_SERIES} onSelect={(n) => toggleValue('application', n)} />
               </ChartCard>
             )}
-            <ChartCard title="Daily dev deployment trend">
+            <ChartCard title="Daily dev deployment trend" description="Deployed and pending work rows per report date.">
               <TrendBarChart data={d.trend} series={[{ key: 'dev_deployed', label: 'Deployed', color: hex('green') }, { key: 'dev_pending', label: 'Pending', color: hex('orange') }]} />
             </ChartCard>
           </div>
+          <ChartCard title="Dev deployment by employee" description="Work rows per person by deployment status; red rows have blocked or failed deployments. Click a row to open the employee." height="auto">
+            <StatusBreakdownTable rows={d.by_employee} series={DEV_SERIES.filter((s) => !['not_required', 'other'].includes(s.key))} onRow={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} exportName="dev-deployment-by-employee" />
+          </ChartCard>
           <Card>
             <CardHeader>
               <CardTitle>Dev deployment detail ({d.items.length})</CardTitle>
               <CardDescription>Filter by employee, project, application, date and deployment status using the global filters or column filters.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ActivitiesTable items={d.items} onTicket={setTicket} pageSize={50} />
+              <ActivitiesTable items={d.items} onTicket={setTicket} pageSize={50} hideColumns={['project', 'prod_required', 'comments', 'file_name', 'work_details']} />
             </CardContent>
           </Card>
         </>
@@ -123,21 +122,21 @@ export function ProductionPage() {
             <KpiCard label="Work items needing prod" value={d.kpis.prod_required_yes} tone="blue" compact hint="Work rows with 'Production Deployment Required? = Yes'" />
           </KpiGrid>
           <div className="grid gap-4 lg:grid-cols-3">
-            <ChartCard title="Production deployment status">
+            <ChartCard title="Production deployment status" description="Release records by status. Click to filter.">
               <DonutChart data={d.distribution} onSelect={(k) => toggleValue('prod_deployment', k)} selected={filters.prod_deployment} centerLabel="releases" />
             </ChartCard>
             <ChartCard title="Production vs non-production work" description="Work items by 'Production Deployment Required?'">
-              <DonutChart data={d.prod_required} onSelect={(k) => toggleValue('prod_required', k)} selected={filters.prod_required} centerLabel="activities" />
+              <DonutChart data={d.prod_required} onSelect={(k) => toggleValue('prod_required', k)} selected={filters.prod_required} centerLabel="work rows" />
             </ChartCard>
             <ChartCard title="Production deployment trend" description="Release records per release date.">
               <TrendBarChart data={d.trend} series={PROD_SERIES.map((s) => ({ key: s.key, label: s.label, color: hex(s.color) }))} />
             </ChartCard>
           </div>
           <div className={cn('grid gap-4', FEATURES.applications ? 'lg:grid-cols-3' : 'lg:grid-cols-2')}>
-            <ChartCard title="Production releases by project">
+            <ChartCard title="Production releases by project" description="Click a bar to open the project.">
               <StackedBarChart data={d.by_project} series={PROD_SERIES} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} />
             </ChartCard>
-            <ChartCard title="Production releases by employee">
+            <ChartCard title="Production releases by employee" description="Click a bar to open the employee.">
               <StackedBarChart data={d.by_employee} series={PROD_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} />
             </ChartCard>
             {FEATURES.applications && (

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Ticket, CheckCircle2, Activity, Hourglass, AlertOctagon, SearchCheck, HelpCircle, History, PauseCircle } from 'lucide-react'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
-import { ChartCard, DonutChart, CategoryBarChart, StackedBarChart, TrendChart, NamedBarChart, STATUS_SERIES } from '@/components/charts'
+import { ChartCard, DonutChart, CategoryBarChart, StackedBarChart, TrendChart, NamedBarChart, STATUS_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { TicketDialog, TicketsTable } from '@/components/common/Tables'
@@ -116,10 +116,10 @@ export default function JiraPage() {
             </TabsList>
             <TabsContent value="charts" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-3">
-                <ChartCard title="Overall Jira status distribution">
+                <ChartCard title="Overall Jira status" description="Unique tickets by latest status. Click to filter.">
                   <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
                 </ChartCard>
-                <ChartCard title="Completed vs remaining">
+                <ChartCard title="Completed vs remaining" description="Unique tickets. Click a bar to filter.">
                   <CategoryBarChart
                     data={[
                       { key: 'completed', label: 'Completed / Deployed', color: 'green', value: d.kpis.completed_tickets },
@@ -129,33 +129,33 @@ export default function JiraPage() {
                     onSelect={(k) => (k === 'completed' ? setList('status', ['completed', 'deployed']) : k === 'other' ? setList('status', ['other']) : setList('status', ['in_progress', 'development', 'code_review', 'testing', 'ready_for_qa', 'ready_for_deployment', 'analysis', 'pending', 'on_hold', 'reopened', 'blocked']))}
                   />
                 </ChartCard>
-                <ChartCard title="Daily ticket completion trend">
-                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed', color: '#16a34a' }, { key: 'unique_tickets', label: 'Reported', color: '#2563eb', dashed: true }]} />
+                <ChartCard title="Daily ticket completion trend" description="Completed and reported tickets per report date.">
+                  <TrendChart data={d.charts.trend} series={[{ key: 'completed_tickets', label: 'Completed', color: 'green' }, { key: 'unique_tickets', label: 'Reported', color: 'blue', dashed: true }]} />
                 </ChartCard>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
-                <ChartCard title="Status distribution by employee">
+                <ChartCard title="Status by employee" description="Tickets per person by latest status. Click a bar to open the employee." height={CHART_HEIGHT_TALL}>
                   <StackedBarChart data={d.charts.status_by_employee} series={STATUS_SERIES} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} max={30} />
                 </ChartCard>
-                <ChartCard title="Status distribution by project">
+                <ChartCard title="Status by project" description="Tickets per project by latest status. Click a bar to open the project." height={CHART_HEIGHT_TALL}>
                   <StackedBarChart data={d.charts.status_by_project} series={STATUS_SERIES} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} />
                 </ChartCard>
                 {FEATURES.applications && (
-                  <ChartCard title="Status distribution by application">
+                  <ChartCard title="Status by application" description="Click a bar to filter.">
                     <StackedBarChart data={d.charts.status_by_application} series={STATUS_SERIES} onSelect={(n) => toggleValue('application', n)} />
                   </ChartCard>
                 )}
-                <ChartCard title="Jira board-wise ticket distribution">
+                <ChartCard title="Status by Jira board" description="Tickets per board by latest status. Click a bar to filter.">
                   <StackedBarChart data={d.charts.status_by_board} series={STATUS_SERIES} onSelect={(n) => toggleValue('jira_board', n)} />
                 </ChartCard>
                 <ChartCard title="Ticket backlog trend" description="Cumulative tickets seen minus cumulative completed.">
-                  <TrendChart data={d.charts.trend} series={[{ key: 'backlog', label: 'Open backlog', color: '#f97316' }]} area />
+                  <TrendChart data={d.charts.trend} series={[{ key: 'backlog', label: 'Open backlog', color: 'orange' }]} area />
                 </ChartCard>
-                <ChartCard title="Blocked tickets by employee">
-                  <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0)} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} color="#dc2626" valueLabel="Blocked" />
+                <ChartCard title="Blocked tickets by employee" description="Click a bar to open the employee.">
+                  <NamedBarChart data={d.charts.status_by_employee.map((e) => ({ name: e.name, value: Number(e.blocked) })).filter((e) => e.value > 0)} onSelect={(n) => nav(`/employees/${encodeURIComponent(n)}${qs}`)} color="red" valueLabel="Blocked" />
                 </ChartCard>
-                <ChartCard title="In-progress tickets by project">
-                  <NamedBarChart data={d.charts.status_by_project.map((p) => ({ name: p.name, value: Number(p.in_progress_total) })).filter((p) => p.value > 0).sort((a, b) => b.value - a.value)} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} color="#2563eb" valueLabel="In progress" />
+                <ChartCard title="In-progress tickets by project" description="Click a bar to open the project.">
+                  <NamedBarChart data={d.charts.status_by_project.map((p) => ({ name: p.name, value: Number(p.in_progress_total) })).filter((p) => p.value > 0).sort((a, b) => b.value - a.value)} onSelect={(n) => nav(`/projects/${encodeURIComponent(n)}${qs}`)} color="blue" valueLabel="In progress" />
                 </ChartCard>
               </div>
             </TabsContent>

@@ -8,15 +8,19 @@ export function cn(...inputs: ClassValue[]) {
 export const STATUS_COLORS: Record<string, string> = {
   green: '#16a34a',
   blue: '#2563eb',
+  sky: '#0ea5e9',
   orange: '#f97316',
   amber: '#eab308',
   pink: '#db2777',
   red: '#dc2626',
-  grey: '#6b7280',
+  grey: '#9ca3af',
+  slate: '#64748b',
   purple: '#7c3aed',
+  violet: '#a855f7',
   teal: '#0d9488',
-  cyan: '#0891b2',
+  cyan: '#06b6d4',
   indigo: '#4f46e5',
+  lime: '#65a30d',
 }
 
 export const PALETTE = ['#2563eb', '#16a34a', '#f97316', '#7c3aed', '#0d9488', '#dc2626', '#0891b2', '#ca8a04', '#db2777', '#4f46e5', '#65a30d', '#9333ea', '#ea580c', '#0284c7']
