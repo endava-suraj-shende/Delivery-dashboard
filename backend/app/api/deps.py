@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from fastapi import Depends, Query
 
-from app.api.auth_deps import owned_board_labels, viewers, workspace
+from app.api.auth_deps import in_demo, owned_board_labels, viewers, workspace
 from app.core.exceptions import NoDataLoadedError
 from app.db.models import User
 from app.services.container import Container, get_container
@@ -27,8 +27,11 @@ def loaded_container(c: Container = Depends(workspace)) -> Container:
 
 
 def scope_filters(f: Filters, c: Container, user: User) -> Filters:
-    """Delivery managers only ever see data from boards they configured."""
-    allowed = owned_board_labels(c, user)
+    """Delivery managers only ever see data from boards they configured (demo-only DMs: their seeded demo boards)."""
+    if user.role != "dm":
+        return f
+    ws = c.demo() if in_demo(user) and hasattr(c, "demo") else c
+    allowed = owned_board_labels(ws, user)
     if allowed is None:
         return f
     if not allowed:

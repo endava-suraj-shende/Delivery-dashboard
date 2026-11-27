@@ -9,6 +9,8 @@ export interface AuthUser {
   name: string
   role: Role
   is_superuser: boolean
+  demo_mode: boolean
+  demo_only: boolean
   requested_role: Role
   status: AccountStatus
   must_change_password: boolean

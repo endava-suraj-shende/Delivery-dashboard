@@ -119,8 +119,9 @@ def logout_all(response: Response, user: User = Depends(current_user), c: Contai
 def _with_boards(c: Container, user: User) -> Dict[str, Any]:
     d = user.to_dict()
     if user.role == "dm":
-        from app.api.auth_deps import visible_board_ids
-        ids = visible_board_ids(c, user) or set()
+        from app.api.auth_deps import in_demo, visible_board_ids
+        ws = c.demo() if in_demo(user) else c
+        ids = visible_board_ids(ws, user) or set()
         d["board_count"] = len(ids)
     return d
 
