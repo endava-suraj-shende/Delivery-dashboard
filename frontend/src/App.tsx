@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppLayout } from '@/layouts/AppLayout'
 import { FilterProvider } from '@/hooks/useFilters'
 import { ThemeProvider } from '@/hooks/useTheme'
-import { SessionProvider, useSession } from '@/hooks/useSession'
+import { homeFor, isSuper, SessionProvider, useSession } from '@/hooks/useSession'
+import type { Role } from '@/services/authApi'
 import { ToastProvider } from '@/components/ui/toast'
 import { TooltipProvider } from '@/components/ui/primitives'
 import { LoadingState } from '@/components/common/States'
@@ -27,6 +28,29 @@ const ComparePage = lazy(() => import('@/modules/config/MiscPages').then((m) => 
 const WelcomePage = lazy(() => import('@/modules/welcome/WelcomePage'))
 const DemoPage = lazy(() => import('@/modules/welcome/DemoPage'))
 const SettingsPage = lazy(() => import('@/modules/config/MiscPages').then((m) => ({ default: m.SettingsPage })))
+const UsersAdminPage = lazy(() => import('@/modules/admin/UsersAdminPage'))
+const VerifyEmailPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.VerifyEmailPage })))
+const ResetPasswordPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.ResetPasswordPage })))
+const ChangePasswordPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.ChangePasswordPage })))
+const OnboardingPage = lazy(() => import('@/modules/auth/OnboardingPage'))
+const PendingApprovalPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.PendingApprovalPage })))
+
+/** Which roles may open each route. Anything not listed is open to every active user. */
+const V: Role[] = ['admin', 'dm', 'guest']  // dashboard viewers (guests see demo data)
+export const ROUTE_ROLES: Record<string, Role[]> = {
+  '/': V, '/employees': V, '/team': V, '/sprints': V, '/projects': V, '/jira': V, '/deployments/dev': V,
+  '/deployments/production': V, '/compare': V, '/reports': ['admin', 'dm'],
+  '/excel': ['admin', 'dm', 'employee'], '/config/jira': ['admin', 'dm'],
+  '/config/status': ['admin'], '/settings': ['admin'], '/admin/users': ['admin'],
+}
+/** Routes that additionally require the superuser flag. */
+export const SUPERUSER_ROUTES = ['/config/status', '/settings', '/admin/users']
+
+export function rolesFor(pathname: string): Role[] | undefined {
+  const keys = Object.keys(ROUTE_ROLES).sort((a, b) => b.length - a.length)
+  const hit = keys.find((k) => (k === '/' ? pathname === '/' : pathname === k || pathname.startsWith(k + '/')))
+  return hit ? ROUTE_ROLES[hit] : undefined
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,10 +59,29 @@ const queryClient = new QueryClient({
 })
 
 function RequireSession() {
-  const { user } = useSession()
+  const { user, ready } = useSession()
   const loc = useLocation()
+  if (!ready) return <LoadingState />
   if (!user) return <Navigate to="/welcome" replace state={{ from: loc.pathname + loc.search }} />
   return <Outlet />
+}
+
+/** Signed in, e-mail verified, approved and not on a temporary password. */
+function RequireActive() {
+  const { user } = useSession()
+  const loc = useLocation()
+  if (!user) return <Navigate to="/welcome" replace />
+  if (user.must_change_password && loc.pathname !== '/change-password') return <Navigate to="/change-password" replace />
+  if (user.status !== 'active' || user.access_expired) return <Navigate to="/pending" replace />
+  const allowed = rolesFor(loc.pathname)
+  if (allowed && !allowed.includes(user.role)) return <Navigate to={homeFor(user)} replace />
+  if (SUPERUSER_ROUTES.some((r) => loc.pathname === r || loc.pathname.startsWith(r + '/')) && !isSuper(user)) return <Navigate to={homeFor(user)} replace />
+  if (user.role === 'dm' && (user.board_count ?? 0) === 0 && !['/onboarding', '/config/jira', '/excel'].some((r) => loc.pathname === r || loc.pathname.startsWith(r + '/'))) return <Navigate to="/onboarding" replace />
+  return <Outlet />
+}
+
+function Lazy({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<LoadingState />}>{children}</Suspense>
 }
 
 export default function App() {
@@ -53,7 +96,13 @@ export default function App() {
                 <Routes>
                   <Route path="welcome" element={<Suspense fallback={<LoadingState />}><WelcomePage /></Suspense>} />
                   <Route path="demo" element={<Suspense fallback={<LoadingState />}><DemoPage /></Suspense>} />
+                  <Route path="verify-email" element={<Lazy><VerifyEmailPage /></Lazy>} />
+                  <Route path="reset-password" element={<Lazy><ResetPasswordPage /></Lazy>} />
                   <Route element={<RequireSession />}>
+                  <Route path="pending" element={<Lazy><PendingApprovalPage /></Lazy>} />
+                  <Route path="change-password" element={<Lazy><ChangePasswordPage /></Lazy>} />
+                  <Route element={<RequireActive />}>
+                  <Route path="onboarding" element={<Lazy><OnboardingPage /></Lazy>} />
                   <Route element={<AppLayout />}>
                     <Route
                       index
@@ -78,7 +127,9 @@ export default function App() {
                     <Route path="config/status" element={<Suspense fallback={<LoadingState />}><StatusConfigPage /></Suspense>} />
                     <Route path="config/jira" element={<Suspense fallback={<LoadingState />}><JiraConnectionsPage /></Suspense>} />
                     <Route path="settings" element={<Suspense fallback={<LoadingState />}><SettingsPage /></Suspense>} />
+                    <Route path="admin/users" element={<Lazy><UsersAdminPage /></Lazy>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
                   </Route>
                   </Route>
                 </Routes>

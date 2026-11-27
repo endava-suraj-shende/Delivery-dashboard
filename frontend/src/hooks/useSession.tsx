@@ -1,66 +1,60 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { authApi, type AuthUser, type Role } from '@/services/authApi'
 
-/**
- * Lightweight client-side session. Login / sign-up currently work in "local" mode (no server check);
- * the shape is ready to be backed by an authentication API later.
- */
-export interface SessionUser {
-  name: string
-  email: string
-  role: 'viewer' | 'manager' | 'admin'
-  signedInAt: string
-}
+/** Server-backed session (httpOnly cookie). `user` is null when signed out, `ready` false while /auth/me loads. */
+export type SessionUser = AuthUser
 
 interface SessionCtx {
   user: SessionUser | null
+  ready: boolean
   signIn: (email: string, password: string) => Promise<SessionUser>
-  signUp: (name: string, email: string, password: string) => Promise<SessionUser>
-  signOut: () => void
+  signUp: (body: { name: string; email: string; password: string; confirm_password: string; requested_role: Role; auth_code?: string }) => Promise<{ email: string; debug_link?: string; email_sent: boolean; activated?: boolean }>
+  signOut: () => Promise<void>
+  refresh: () => Promise<SessionUser | null>
+  setUser: (u: SessionUser | null) => void
 }
 
-const KEY = 'edd.session'
 const Ctx = createContext<SessionCtx | null>(null)
 
-function read(): SessionUser | null {
-  try {
-    const raw = localStorage.getItem(KEY)
-    return raw ? (JSON.parse(raw) as SessionUser) : null
-  } catch {
-    return null
-  }
-}
-
-function nameFromEmail(email: string): string {
-  const local = email.split('@')[0] ?? ''
-  return local.split(/[._-]+/).filter(Boolean).map((p) => p[0].toUpperCase() + p.slice(1)).join(' ') || 'User'
+/** Landing route for a user after sign-in, based on role and account state. */
+export function homeFor(u: SessionUser | null): string {
+  if (!u) return '/welcome'
+  if (u.must_change_password) return '/change-password'
+  if (u.status !== 'active' || u.access_expired) return '/pending'
+  if (u.role === 'dm' && (u.board_count ?? 0) === 0) return '/onboarding'
+  return u.role === 'employee' ? '/excel' : '/'
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<SessionUser | null>(read)
-  const persist = useCallback((u: SessionUser | null) => {
-    setUser(u)
-    if (u) localStorage.setItem(KEY, JSON.stringify(u))
-    else localStorage.removeItem(KEY)
+  const [user, setUser] = useState<SessionUser | null>(null)
+  const [ready, setReady] = useState(false)
+
+  const refresh = useCallback(async () => {
+    try {
+      const u = await authApi.me()
+      setUser(u)
+      return u
+    } catch {
+      setUser(null)
+      return null
+    } finally {
+      setReady(true)
+    }
   }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid work email address.')
-    if (password.length < 4) throw new Error('Enter your password.')
-    await new Promise((r) => setTimeout(r, 500))
-    const u: SessionUser = { name: nameFromEmail(email), email, role: 'manager', signedInAt: new Date().toISOString() }
-    persist(u)
+    const u = await authApi.login(email.trim(), password)
+    setUser(u)
     return u
-  }, [persist])
-  const signUp = useCallback(async (name: string, email: string, password: string) => {
-    if (name.trim().length < 2) throw new Error('Enter your full name.')
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid work email address.')
-    if (password.length < 8) throw new Error('Use at least 8 characters for the password.')
-    await new Promise((r) => setTimeout(r, 600))
-    const u: SessionUser = { name: name.trim(), email, role: 'viewer', signedInAt: new Date().toISOString() }
-    persist(u)
-    return u
-  }, [persist])
-  const signOut = useCallback(() => persist(null), [persist])
-  const value = useMemo(() => ({ user, signIn, signUp, signOut }), [user, signIn, signUp, signOut])
+  }, [])
+  const signUp = useCallback(async (body: Parameters<SessionCtx['signUp']>[0]) => authApi.signup({ ...body, email: body.email.trim() }), [])
+  const signOut = useCallback(async () => {
+    try { await authApi.logout() } finally { setUser(null) }
+  }, [])
+
+  const value = useMemo(() => ({ user, ready, signIn, signUp, signOut, refresh, setUser }), [user, ready, signIn, signUp, signOut, refresh])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
@@ -68,4 +62,12 @@ export function useSession(): SessionCtx {
   const c = useContext(Ctx)
   if (!c) throw new Error('useSession must be used inside SessionProvider')
   return c
+}
+
+export function can(user: SessionUser | null, ...roles: Role[]): boolean {
+  return !!user && user.status === 'active' && roles.includes(user.role)
+}
+
+export function isSuper(user: SessionUser | null): boolean {
+  return !!user && user.role === 'admin' && user.is_superuser && user.status === 'active'
 }

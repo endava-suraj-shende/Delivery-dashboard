@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 
+from app.api.auth_deps import viewers
+from app.db.models import User
 from app.api.deps import filters, loaded_container
 from app.core.exceptions import NotFoundError, ValidationFailedError
 from app.events.event_bus import Events
@@ -306,10 +308,17 @@ def global_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1
 
 
 @meta.get("/dimensions")
-def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def dimensions(jira_board: Optional[List[str]] = Query(None), c: Container = Depends(loaded_container),
+               user: User = Depends(viewers)) -> Dict[str, Any]:
     """Filter options. When boards are given, employees / projects / sprints are limited to those boards."""
+    from app.api.auth_deps import owned_board_labels
     dims = c.analytics.dimension_values()
     boards = [b for b in (jira_board or []) if b and b.strip()]
+    allowed = owned_board_labels(c, user)
+    if allowed is not None:
+        # delivery manager: only own boards (and everything derived from them)
+        boards = [b for b in allowed if not boards or b.lower() in {x.lower() for x in boards}] or ["__no_board_access__"]
+        dims = {**dims, "jira_boards": [b for b in dims.get("jira_boards", []) if b in allowed]}
     if boards:
         scoped = c.analytics.dimension_values(Filters(jira_board=boards))
         dims = {**dims, "employees": scoped["employees"], "projects": scoped["projects"], "sprints": scoped["sprints"]}

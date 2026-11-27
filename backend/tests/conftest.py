@@ -1,6 +1,10 @@
 """Shared fixtures: synthetic bi-weekly template workbooks (no real business data)."""
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("EDD_FAST_HASH", "1")  # cheap Argon2 parameters for the test-suite only
+
 from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
@@ -134,6 +138,9 @@ def settings(tmp_path: Path, sample_data_dir: Path) -> Settings:
         jira_email="",
         jira_api_token="",
         data_source="excel",
+        database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
+        environment="test",
+        resend_api_key="",
     )
 
 
@@ -154,6 +161,17 @@ def services(settings: Settings):
                           "engine": engine, "reports": reports})()
 
 
+def login_as_admin(client) -> None:
+    """Create a superuser in the running app and sign the TestClient in (cookie session)."""
+    import app.services.container as container_mod
+    cont = container_mod.get_container()
+    with cont.db() as db:
+        cont.auth.create_superuser(db, "admin@endava.com", "Admin", "Admin-Pass-123!")
+        db.commit()
+    r = client.post("/api/v1/auth/login", json={"email": "admin@endava.com", "password": "Admin-Pass-123!"})
+    assert r.status_code == 200, r.text
+
+
 @pytest.fixture
 def client(settings: Settings, monkeypatch: pytest.MonkeyPatch):
     """FastAPI test client wired to the sample data."""
@@ -170,8 +188,16 @@ def client(settings: Settings, monkeypatch: pytest.MonkeyPatch):
     from app.main import app as fastapi_app
 
     with TestClient(fastapi_app) as c:
+        login_as_admin(c)  # existing API tests run as superuser
         yield c
     container_mod.get_container.cache_clear()
+
+
+@pytest.fixture
+def anon(client):
+    """Same app, no session cookie."""
+    from fastapi.testclient import TestClient
+    return TestClient(client.app)
 
 
 ALL = {"start_date": date(2000, 1, 1).isoformat(), "end_date": date(2100, 1, 1).isoformat()}

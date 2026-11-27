@@ -253,3 +253,53 @@ storage/reports        generated reports
 * Template rows copied from another employee's sheet (same ticket id in two employees' reports) are attributed to both;
   the ticket is still counted once in team totals.
 * Import history and generated-report history are kept for the running session only (no database).
+
+## Security, accounts and roles
+
+The application requires sign-in. Accounts live in a SQLite database (`storage/app.db` by default, `EDD_DATABASE_URL` to change).
+
+### First-time setup / moving to a new environment
+
+```bash
+python manage.py migrate            # creates or upgrades the schema (Alembic) and imports legacy JSON config once
+python manage.py create-superuser   # first admin account (prompts for e-mail and password)
+python run.py                       # start backend + frontend
+```
+
+Other commands: `python manage.py db-status`, `allow-domain example.com`, `allow-email someone@partner.com`,
+`makemigrations -m "message"` (after changing `backend/app/db/models.py`).
+
+### Sign-up flow
+
+1. User registers with name, company e-mail, password (entered twice) and the role they need.
+2. A verification link is e-mailed (Resend; set `EDD_RESEND_API_KEY`). Without a key the link is written to the
+   backend log and, in `EDD_ENVIRONMENT=local`, returned to the UI as a development link.
+3. **Employees** are active immediately after verification. **Delivery managers** and **admins** wait on the
+   "pending approval" page until a superuser approves or rejects the request in *User Management*.
+4. Forgot password: e-mailed reset link (60 min). Admins can also issue a one-time temporary password that must be
+   changed at next sign-in. Passwords are stored as Argon2id hashes and can never be read back, not even by admins.
+5. Five failed sign-ins lock the account for 15 minutes. Sessions are httpOnly cookies valid `EDD_SESSION_HOURS` (default 8).
+
+### Auth codes (fast path)
+
+The superuser generates reusable **auth codes** in *User Management* (role, optional board, optional expiry / max uses,
+revocable). At sign-up the role is chosen from a dropdown and the code is entered:
+
+* **Employee / Delivery manager + valid code** -> active immediately (no e-mail verification, no approval). A wrong code
+  returns "Auth code is wrong". A delivery manager code tied to a board grants read access to that board's data.
+* **Guest** -> code is mandatory, e-mail is still verified by link, access lasts **5 days**. Afterwards the account is parked
+  until a superuser **extends** it (User Management -> Extend). Guests only see **synthetic demo data** (two fake boards,
+  invented people and tickets, generated in-process) and a "Demo data" banner.
+* Superusers are e-mailed when a new request is waiting or a guest window expires.
+
+### Roles
+
+| Role | Access |
+| --- | --- |
+| Employee | Excel Data Management only: upload workbooks and confirm they were received |
+| Delivery manager | All dashboards and reports **for the Jira boards they configured or were granted by code**; Jira Connections shows only those boards |
+| Guest | Dashboards and comparisons on demo data for 5 days (no reports, uploads or configuration) |
+| Admin (superuser) | Everything, including Application Settings, Status Configuration, all boards, default Jira credentials, auth codes and User Management |
+
+Sign-up is restricted to the allowed domains (`EDD_DEFAULT_ALLOWED_DOMAINS`, default `endava.com`); the superuser can
+add domains or allow-list individual addresses in *User Management*.

@@ -57,9 +57,10 @@ class UserMap:
 
 class JiraReconcileService:
     def __init__(self, store: InMemoryDataStore, normalizer: StatusNormalizer, registry: JiraBoardRegistry,
-                 pool: JiraClientPool, bus: EventBus, user_map_path: Path, auto_sync: bool = True) -> None:
+                 pool: JiraClientPool, bus: EventBus, user_map_path: Path, auto_sync: bool = True, user_map_store: Any = None) -> None:
+        from app.db.repos import FileJsonStore
         self.store, self.normalizer, self.registry, self.pool, self.bus = store, normalizer, registry, pool, bus
-        self._user_map_path = user_map_path
+        self._user_map_store = user_map_store or FileJsonStore(user_map_path)
         self.auto_sync = auto_sync
         self._lock = threading.RLock()
         self._user_map = self._load_user_map()
@@ -102,17 +103,16 @@ class JiraReconcileService:
 
     # ------------------------------------------------------------------ user map
     def _load_user_map(self) -> UserMap:
-        if self._user_map_path.exists():
+        data = self._user_map_store.read()
+        if data:
             try:
-                data = json.loads(self._user_map_path.read_text(encoding="utf-8"))
                 return UserMap(overrides=data.get("overrides", {}), ignored=data.get("ignored", []))
             except Exception:
                 pass
         return UserMap()
 
     def _save_user_map(self) -> None:
-        self._user_map_path.parent.mkdir(parents=True, exist_ok=True)
-        self._user_map_path.write_text(json.dumps(self._user_map.__dict__, indent=2), encoding="utf-8")
+        self._user_map_store.write(dict(self._user_map.__dict__))
 
     def set_user_mapping(self, employee: str, account_id: Optional[str], display_name: Optional[str], email: Optional[str]) -> None:
         with self._lock:

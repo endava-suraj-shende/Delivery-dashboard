@@ -219,8 +219,9 @@ class StatusConfig:
 class StatusNormalizer:
     """Thread-safe normalizer backed by a JSON config file."""
 
-    def __init__(self, config_path: Optional[Path] = None) -> None:
-        self._path = config_path
+    def __init__(self, config_path: Optional[Path] = None, store: Any = None) -> None:
+        from app.db.repos import FileJsonStore
+        self._store = store or (FileJsonStore(config_path) if config_path else None)
         self._lock = threading.RLock()
         self._config = StatusConfig()
         self._index: Dict[str, Dict[str, str]] = {}
@@ -230,9 +231,10 @@ class StatusNormalizer:
 
     # ---- persistence -----------------------------------------------------
     def _load(self) -> None:
-        if self._path and self._path.exists():
+        data = self._store.read() if self._store else None
+        if data:
             try:
-                self._config = StatusConfig.from_dict(json.loads(self._path.read_text(encoding="utf-8")))
+                self._config = StatusConfig.from_dict(data)
                 self._merge_new_defaults()
             except Exception:
                 self._config = StatusConfig()
@@ -253,9 +255,8 @@ class StatusNormalizer:
             self.save()
 
     def save(self) -> None:
-        if self._path:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._config.to_dict(), indent=2), encoding="utf-8")
+        if self._store:
+            self._store.write(self._config.to_dict())
 
     def _rebuild_index(self) -> None:
         self._index = {}
