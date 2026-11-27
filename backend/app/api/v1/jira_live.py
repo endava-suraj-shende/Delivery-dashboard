@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.api.auth_deps import admin_only, managers
+from app.api.auth_deps import workspace as _ws, workspace_db
 from app.api.deps import container, filters, loaded_container
 from app.core.exceptions import AppError, NotFoundError
 from app.db.models import ROLE_ADMIN, ROLE_DM, User
@@ -89,7 +90,7 @@ class UserMapping(BaseModel):
 
 # ---------------------------------------------------------------- connections
 @router.get("/connections")
-def connections(user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def connections(user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     st = c.jira.status()
     visible = {b.id for b in _visible(c, user)}
     owners: Dict[str, str] = {}
@@ -104,7 +105,7 @@ def connections(user: User = Depends(managers), c: Container = Depends(container
 
 
 @router.get("/connections/boards")
-def list_boards(user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def list_boards(user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     from sqlalchemy import select
     owners: Dict[str, str] = {}
     board_codes: Dict[str, str] = {}
@@ -125,7 +126,7 @@ def list_boards(user: User = Depends(managers), c: Container = Depends(container
 
 
 @router.post("/connections/boards")
-def add_board(body: BoardCreate, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def add_board(body: BoardCreate, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     if user.role == ROLE_ADMIN and not user.is_superuser:
         raise AppError("Admins can view boards but not add them")
     email, token = (body.email or "").strip(), (body.token or "").strip()
@@ -153,7 +154,7 @@ class BoardCode(BaseModel):
 
 
 @router.post("/connections/redeem-code")
-def redeem_board_code(body: BoardCode, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def redeem_board_code(body: BoardCode, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     """Delivery manager: unlock another board with its BOARD-xxxx code."""
     with c.db() as db:
         out = c.auth.redeem_board_code(db, user, body.code)
@@ -162,7 +163,7 @@ def redeem_board_code(body: BoardCode, user: User = Depends(managers), c: Contai
 
 
 @router.put("/connections/boards/{board_id}")
-def update_board(board_id: str, body: BoardUpdate, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def update_board(board_id: str, body: BoardUpdate, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     _owned(c, user, board_id)
     changes = body.model_dump(exclude_none=True)
     if user.role != ROLE_ADMIN:
@@ -173,7 +174,7 @@ def update_board(board_id: str, body: BoardUpdate, user: User = Depends(managers
 
 
 @router.get("/connections/boards/{board_id}/assignees")
-def board_assignees(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def board_assignees(board_id: str, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     cfg = _owned(c, user, board_id)
     names = c.jira_source.assignees(board_id)
     if not names:
@@ -189,26 +190,26 @@ def board_assignees(board_id: str, user: User = Depends(managers), c: Container 
 
 
 @router.get("/connections/credentials", dependencies=[Depends(admin_only)])
-def get_credentials(c: Container = Depends(container)) -> Dict[str, Any]:
+def get_credentials(c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.jira_boards.default_credentials_info()
 
 
 @router.put("/connections/credentials", dependencies=[Depends(admin_only)])
-def put_credentials(body: DefaultCredentials, c: Container = Depends(container)) -> Dict[str, Any]:
+def put_credentials(body: DefaultCredentials, c: Container = Depends(_ws)) -> Dict[str, Any]:
     c.jira_boards.set_default_credentials(body.email.strip(), body.token.strip())
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board="credentials")
     return c.jira_boards.default_credentials_info()
 
 
 @router.delete("/connections/credentials", dependencies=[Depends(admin_only)])
-def delete_credentials(c: Container = Depends(container)) -> Dict[str, Any]:
+def delete_credentials(c: Container = Depends(_ws)) -> Dict[str, Any]:
     c.jira_boards.clear_default_credentials()
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board="credentials")
     return c.jira_boards.default_credentials_info()
 
 
 @router.delete("/connections/boards/{board_id}")
-def delete_board(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def delete_board(board_id: str, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     _owned(c, user, board_id)
     c.jira_boards.remove(board_id)
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board=board_id)
@@ -216,19 +217,19 @@ def delete_board(board_id: str, user: User = Depends(managers), c: Container = D
 
 
 @router.post("/connections/boards/{board_id}/test")
-def test_board(board_id: str, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+def test_board(board_id: str, user: User = Depends(managers), c: Container = Depends(_ws)) -> Dict[str, Any]:
     _owned(c, user, board_id)
     return c.jira_boards.test(board_id)
 
 
 @router.post("/connections/test")
-def test_url(body: BoardTest, c: Container = Depends(container)) -> Dict[str, Any]:
+def test_url(body: BoardTest, c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.jira_boards.test_url(body.url, body.email_env, body.token_env, body.email, body.token)
 
 
 @router.get("/connections/discover")
 def discover(base_url: Optional[str] = Query(None), project: Optional[List[str]] = Query(None),
-                   c: Container = Depends(container)) -> Dict[str, Any]:
+                   c: Container = Depends(_ws)) -> Dict[str, Any]:
     sites = [base_url] if base_url else (c.jira_boards.sites() or [])
     projects = project or sorted({k.split("-")[0] for ids in c.store.activities()["ticket_ids"] for k in (ids or [])})
     out: List[Dict[str, Any]] = []
@@ -242,7 +243,7 @@ def discover(base_url: Optional[str] = Query(None), project: Optional[List[str]]
 
 
 @router.get("/connections/me")
-def me(base_url: Optional[str] = Query(None), c: Container = Depends(container)) -> Dict[str, Any]:
+def me(base_url: Optional[str] = Query(None), c: Container = Depends(_ws)) -> Dict[str, Any]:
     site = base_url or (c.jira_boards.sites()[0] if c.jira_boards.sites() else None)
     if not site:
         from app.core.exceptions import ValidationFailedError
@@ -262,7 +263,7 @@ def sync(force: bool = Query(False), board_id: Optional[str] = Query(None), user
 
 
 @router.get("/live/status")
-def live_status(c: Container = Depends(container)) -> Dict[str, Any]:
+def live_status(c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.jira.status()
 
 

@@ -67,14 +67,21 @@ class Container:
         self.analytics.source_mode = lambda: self.data.mode
         self.jira.source_mode = lambda: self.data.mode
         self.analytics.board_members = self.data.board_members
+        import threading
+        self._demo_lock = threading.Lock()
         from app.events.event_handlers import register_handlers
         register_handlers(self)
 
     def demo(self):
-        """Lazily built synthetic workspace used for guest sessions (never touches real data)."""
+        """Lazily built synthetic workspace used for guest sessions and demo mode (never touches real data)."""
         if getattr(self, "_demo", None) is None:
-            from app.services.demo_data import DemoWorkspace
-            self._demo = DemoWorkspace(self.settings)
+            import threading
+            if not hasattr(self, "_demo_lock"):
+                self._demo_lock = threading.Lock()
+            with self._demo_lock:  # concurrent first requests must not build (and reset) the demo DB twice
+                if getattr(self, "_demo", None) is None:
+                    from app.services.demo_data import DemoWorkspace
+                    self._demo = DemoWorkspace(self.settings, self.secrets, self.settings.auth_secret or self._derived_auth_secret())
         return self._demo
 
     def _derived_auth_secret(self) -> str:

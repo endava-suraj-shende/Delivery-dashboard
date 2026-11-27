@@ -62,14 +62,28 @@ viewers = require_roles(ROLE_ADMIN, ROLE_DM, ROLE_GUEST)  # dashboards (guests s
 anyone_active = require_roles(ROLE_ADMIN, ROLE_DM, ROLE_EMPLOYEE, ROLE_GUEST)
 
 
+def in_demo(user: Optional[User]) -> bool:
+    return bool(user) and (user.role == ROLE_GUEST or user.demo_only)
+
+
 def workspace(user: User = Depends(active_user)):
-    """The data workspace for this user: the real container, or the synthetic demo workspace for guests."""
+    """The data workspace for this user: the real container, or the synthetic demo workspace
+    (guests, demo-only accounts and superusers who switched demo mode on)."""
     c = get_container()
-    if user.role == ROLE_GUEST:
+    if in_demo(user):
         ws = c.demo()
         ws.ensure_loaded()
         return ws
     return c
+
+
+def workspace_db(ws=Depends(workspace)):
+    """Database session bound to the active workspace (real or demo)."""
+    s = ws.db()
+    try:
+        yield s
+    finally:
+        s.close()
 
 
 # Employees may only upload workbooks and check that the upload worked.
@@ -99,9 +113,14 @@ def visible_board_ids(c: Container, user: User) -> Optional[set]:
     """Boards a delivery manager may see (owned + granted via auth code / admin); None = unrestricted."""
     if user.role in (ROLE_ADMIN, ROLE_GUEST):
         return None
+    uid = user.id
     with c.db() as db:
-        granted = {r.board_id for r in db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == user.id)).scalars().all()}
-    return granted | {b.id for b in c.jira_boards.list() if b.owner_id == user.id}
+        if user.demo_only:
+            # demo-only accounts live in the real DB; their board ownership is seeded in the demo DB under the same e-mail
+            twin = db.execute(select(User).where(User.email == user.email)).scalar_one_or_none()
+            uid = twin.id if twin else uid
+        granted = {r.board_id for r in db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == uid)).scalars().all()}
+    return granted | {b.id for b in c.jira_boards.list() if b.owner_id == uid}
 
 
 def owned_board_labels(c: Container, user: User) -> Optional[List[str]]:

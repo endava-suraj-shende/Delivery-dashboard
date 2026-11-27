@@ -288,9 +288,21 @@ revocable). At sign-up the role is chosen from a dropdown and the code is entere
 * **Employee / Delivery manager + valid code** -> active immediately (no e-mail verification, no approval). A wrong code
   returns "Auth code is wrong". A delivery manager code tied to a board grants read access to that board's data.
 * **Guest** -> code is mandatory, e-mail is still verified by link, access lasts **5 days**. Afterwards the account is parked
-  until a superuser **extends** it (User Management -> Extend). Guests only see **synthetic demo data** (two fake boards,
-  invented people and tickets, generated in-process) and a "Demo data" banner.
+  until a superuser **extends** it (User Management -> Extend). Guests only see **synthetic demo data** and a "Demo data" banner.
 * Superusers are e-mailed when a new request is waiting or a guest window expires.
+
+### Demo workspace
+
+The demo data is generated in-process (deterministic, no network): **10 boards** (7 scrum + 3 kanban across 6 projects),
+**~60 people** with mixed international names, **~2,500 tickets** with every scenario (carry-over across sprints, blocked,
+on hold, reopened, cancelled, unassigned, overdue due dates, story points, releases, environments, comments) and a disposable
+demo database with 20+ accounts in every state (active, pending, disabled, rejected, expired guests, auth codes, board grants).
+It is rebuilt on every server start. Demo-only accounts always land in this workspace and can never see real data:
+
+```bash
+python manage.py create-demo-superuser   # demo.admin@example.com   / Demo-Admin-2026!
+python manage.py create-demo-dm          # demo.manager@example.com / Demo-Manager-2026!  (owns Phoenix boards, granted Vega)
+```
 
 ### Roles
 
