@@ -275,7 +275,9 @@ def jira_client_api(jira_settings, fake_jira, monkeypatch):
     container_mod.get_container.cache_clear()
     monkeypatch.setattr(container_mod, "get_settings", lambda: jira_settings)
     from app.main import app as fastapi_app
+    from tests.conftest import login_as_admin
     with TestClient(fastapi_app) as c:
+        login_as_admin(c)
         yield c
     container_mod.get_container.cache_clear()
 

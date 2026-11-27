@@ -2,6 +2,10 @@ import { api } from '@/services/api'
 import type { Period } from '@/types'
 
 export interface JiraBoard {
+  owner_id?: string | null
+  owner_name?: string | null
+  board_code?: string | null
+  can_edit?: boolean
   id: string
   url: string
   base_url: string
@@ -36,6 +40,8 @@ export interface UserMatch {
 }
 
 export interface JiraStatus {
+  is_admin?: boolean
+  read_only?: boolean
   configured: boolean
   email: string | null
   boards: JiraBoard[]
@@ -147,6 +153,7 @@ const q = (qs: string, extra?: Record<string, string | number | boolean | undefi
 }
 
 export const jiraLiveApi = {
+  redeemBoardCode: (code: string) => api.post<{ board_id: string; label: string | null }>('/jira/connections/redeem-code', { code }).then((r) => r.data),
   status: () => api.get<JiraStatus>('/jira/connections').then((r) => r.data),
   boards: () => api.get<{ items: JiraBoard[] }>('/jira/connections/boards').then((r) => r.data.items),
   addBoard: (body: { url: string; label?: string; enabled?: boolean; email_env?: string; token_env?: string; email?: string; token?: string; excel_board_names?: string[]; people?: string[]; test?: boolean }) =>

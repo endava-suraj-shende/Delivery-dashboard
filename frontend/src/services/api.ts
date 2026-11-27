@@ -26,7 +26,16 @@ import type {
   Ticket,
 } from '@/types'
 
-export const api = axios.create({ baseURL: '/api/v1', timeout: 120_000 })
+export const api = axios.create({ baseURL: '/api/v1', timeout: 120_000, withCredentials: true })
+
+// Session expired or revoked: send the user back to the welcome page (except for auth probes themselves).
+api.interceptors.response.use(undefined, (err: AxiosError) => {
+  const url = err.config?.url ?? ''
+  if (err.response?.status === 401 && !url.startsWith('/auth/') && !window.location.pathname.startsWith('/welcome')) {
+    window.location.assign('/welcome')
+  }
+  return Promise.reject(err)
+})
 
 export interface ApiError {
   error: string
@@ -71,7 +80,12 @@ export const excelApi = {
   removeUpload: (id: string) => api.delete<DataStatus>(`/excel/uploads/${id}`).then((r) => r.data),
   clearUploads: () => api.delete<DataStatus>('/excel/uploads').then((r) => r.data),
   history: () => api.get<{ items: HistoryEntry[] }>('/excel/history').then((r) => r.data.items),
+  my: () => api.get<MyUploads>('/excel/my').then((r) => r.data),
 }
+
+export interface MyUpload { id: string; file_id: string | null; file_name: string; size_bytes: number; employee: string | null; project: string | null; application: string | null; jira_board: string | null; report_date: string | null; layout: string | null; work_items: number; releases: number; issues: number; ok: boolean; uploaded_at: string | null }
+export interface MyTicketRow { id: number; upload_id: string; file_name: string | null; source_row: number | null; ticket_id: string | null; ticket_link: string | null; application: string | null; work_details: string | null; work_type_raw: string | null; work_type: string | null; work_status_raw: string | null; work_status: string | null; prod_required: string | null; dev_deployment_raw: string | null; dev_deployment: string | null; prod_deployment: string | null; comments: string | null; report_date: string | null }
+export interface MyUploads { uploads: MyUpload[]; tickets: MyTicketRow[] }
 
 export const dataSourceApi = {
   get: () => api.get<DataStatus>('/data/source').then((r) => r.data),

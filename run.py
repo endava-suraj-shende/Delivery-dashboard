@@ -37,6 +37,7 @@ FRONTEND_PORT = 5173
 PY_MODULES = {
     "fastapi": "fastapi", "uvicorn": "uvicorn", "pydantic": "pydantic", "pydantic_settings": "pydantic-settings",
     "pandas": "pandas", "numpy": "numpy", "openpyxl": "openpyxl", "reportlab": "reportlab", "multipart": "python-multipart",
+    "sqlalchemy": "sqlalchemy", "alembic": "alembic", "argon2": "argon2-cffi", "jwt": "PyJWT",
 }
 
 C = {k: "" for k in ("g", "y", "r", "b", "d", "x")}

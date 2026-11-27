@@ -26,7 +26,8 @@ MODES = ("auto", "jira", "excel", "both")
 
 class DataSourceService:
     def __init__(self, settings: Settings, store: InMemoryDataStore, excel: ExcelService, jira_source: JiraDataSource,
-                 registry: JiraBoardRegistry, pool: JiraClientPool, bus: EventBus) -> None:
+                 registry: JiraBoardRegistry, pool: JiraClientPool, bus: EventBus, config_store: Any = None) -> None:
+        from app.db.repos import FileJsonStore
         self.settings = settings
         self.store = store
         self.excel = excel
@@ -35,7 +36,7 @@ class DataSourceService:
         self.pool = pool
         self.bus = bus
         self._lock = threading.RLock()
-        self._path: Path = settings.data_source_config_path
+        self._cfg_store = config_store or FileJsonStore(settings.data_source_config_path)
         self._config: Dict[str, Any] = {"mode": settings.data_source, "lookback_days": settings.jira_lookback_days,
                                         "refresh_minutes": settings.jira_refresh_minutes}
         self._load_config()
@@ -45,18 +46,13 @@ class DataSourceService:
 
     # ------------------------------------------------------------------ config
     def _load_config(self) -> None:
-        if self._path.exists():
-            try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-                for k in ("mode", "lookback_days", "refresh_minutes"):
-                    if k in data:
-                        self._config[k] = data[k]
-            except Exception:
-                pass
+        data = self._cfg_store.read() or {}
+        for k in ("mode", "lookback_days", "refresh_minutes"):
+            if k in data:
+                self._config[k] = data[k]
 
     def _save_config(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(self._config, indent=2), encoding="utf-8")
+        self._cfg_store.write(dict(self._config))
 
     @property
     def configured_mode(self) -> str:

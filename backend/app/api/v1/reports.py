@@ -6,20 +6,22 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 
-from app.api.deps import loaded_container
+from app.api.auth_deps import managers
+from app.api.deps import loaded_container, scope_filters
+from app.db.models import User
 from app.schemas.common import ReportRequest
 from app.services.container import Container
 from app.services.filter_service import Filters
 from app.services.report_service import REPORT_TYPES
 
-router = APIRouter(prefix="/reports", tags=["Reports"])
+router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(managers)])
 
 MEDIA = {"pdf": "application/pdf", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
          "csv": "text/csv"}
 
 
-def _filters(body: ReportRequest) -> Filters:
-    return Filters.from_query(**body.filters.model_dump())
+def _filters(body: ReportRequest, c: Container, user: User) -> Filters:
+    return scope_filters(Filters.from_query(**body.filters.model_dump()), c, user)
 
 
 @router.get("/types")
@@ -29,28 +31,28 @@ async def types() -> Dict[str, Any]:
 
 
 @router.post("/generate")
-async def generate(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.reports.generate(body.report_type, body.format, _filters(body), body.target)
+async def generate(body: ReportRequest, c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
+    return c.reports.generate(body.report_type, body.format, _filters(body, c, user), body.target)
 
 
 @router.post("/employee")
-async def employee_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.reports.generate("employee" if body.target else "all_employees", body.format, _filters(body), body.target)
+async def employee_report(body: ReportRequest, c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
+    return c.reports.generate("employee" if body.target else "all_employees", body.format, _filters(body, c, user), body.target)
 
 
 @router.post("/team")
-async def team_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.reports.generate("team", body.format, _filters(body), None)
+async def team_report(body: ReportRequest, c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
+    return c.reports.generate("team", body.format, _filters(body, c, user), None)
 
 
 @router.post("/project")
-async def project_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.reports.generate("project", body.format, _filters(body), body.target)
+async def project_report(body: ReportRequest, c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
+    return c.reports.generate("project", body.format, _filters(body, c, user), body.target)
 
 
 @router.post("/management")
-async def management_report(body: ReportRequest, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.reports.generate("management", body.format, _filters(body), None)
+async def management_report(body: ReportRequest, c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
+    return c.reports.generate("management", body.format, _filters(body, c, user), None)
 
 
 @router.get("")

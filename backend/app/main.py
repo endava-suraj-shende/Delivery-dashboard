@@ -5,11 +5,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.api.v1 import analytics, excel, jira_live, reports
+from app.api.auth_deps import admin_only, excel_access, viewers
+from app.api.v1 import admin, analytics, auth, excel, jira_live, reports
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
@@ -66,11 +67,16 @@ app.add_middleware(
 register_exception_handlers(app)
 
 API = "/api/v1"
-app.include_router(excel.router, prefix=API)
-app.include_router(excel.data_router, prefix=API)
+app.include_router(auth.router, prefix=API)
+app.include_router(admin.router, prefix=API)
+# Employees: upload + status only. Managers / admins: full Excel management.
+app.include_router(excel.router, prefix=API, dependencies=[Depends(excel_access)])
+# Application configuration (data source, status mapping) is admin only.
+app.include_router(excel.data_router, prefix=API, dependencies=[Depends(admin_only)])
+app.include_router(analytics.config, prefix=API, dependencies=[Depends(admin_only)])
 for r in (analytics.employees, analytics.projects, analytics.jira, analytics.deployment, analytics.dashboard,
-          analytics.search, analytics.config, analytics.meta, analytics.sprints):
-    app.include_router(r, prefix=API)
+          analytics.search, analytics.meta, analytics.sprints):
+    app.include_router(r, prefix=API, dependencies=[Depends(viewers)])
 app.include_router(reports.router, prefix=API)
 app.include_router(jira_live.router, prefix=API)
 
