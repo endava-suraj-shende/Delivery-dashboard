@@ -35,7 +35,8 @@ import { useDataStatus } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { useTheme } from '@/hooks/useTheme'
 import { useSession } from '@/hooks/useSession'
-import { rolesFor } from '@/App'
+import { rolesFor, SUPERUSER_ROUTES } from '@/App'
+import { isSuper } from '@/hooks/useSession'
 import { ROLE_LABEL } from '@/services/authApi'
 import { excelApi, errorMessage } from '@/services/api'
 import { cn, fmtDate } from '@/lib/utils'
@@ -69,9 +70,9 @@ export function AppLayout() {
   const loc = useLocation()
   const nav = useNavigate()
   const { user, signOut } = useSession()
-  const visibleNav = NAV.filter((n) => { const r = rolesFor(n.to); return !r || (user && r.includes(user.role)) })
+  const visibleNav = NAV.filter((n) => { const r = rolesFor(n.to); if (r && !(user && r.includes(user.role))) return false; return !SUPERUSER_ROUTES.includes(n.to) || isSuper(user) })
   const isGuest = user?.role === 'guest'
-  const canRefresh = user?.role === 'admin' || user?.role === 'dm'
+  const canRefresh = isSuper(user) || user?.role === 'dm'
 
   const refresh = useMutation({
     mutationFn: excelApi.refresh,
@@ -122,7 +123,7 @@ export function AppLayout() {
         })}
       </nav>
       <div className="border-t border-white/10 p-2">
-        {!collapsed && status && canRefresh && (
+        {!collapsed && status && user?.role !== 'employee' && user?.role !== 'guest' && (
           <div className="mb-2 rounded-md bg-white/5 p-2 text-[11px] leading-relaxed text-sidebar-foreground/80">
             <p className="flex items-center gap-1 font-medium text-sidebar-foreground">
               {status.source === 'excel' ? <Database className="h-3 w-3" /> : <Plug className="h-3 w-3" />} Source: {status.source === 'jira' ? 'Jira boards' : status.source === 'both' ? 'Jira + Excel' : 'Excel'}
@@ -157,7 +158,7 @@ export function AppLayout() {
           </Button>
           {canRefresh && <GlobalSearch />}
           <div className="ml-auto flex items-center gap-2">
-            {status && canRefresh && (
+            {status && user?.role !== 'employee' && user?.role !== 'guest' && (
               <HelpTip text={`Source: ${status.source_dir}\nLast refresh: ${status.last_refresh ? new Date(status.last_refresh).toLocaleString() : '-'}\nLoad time: ${status.load_duration_ms ?? '-'} ms`}>
                 <div className="hidden items-center gap-2 md:flex">
                   <Badge variant={status.needs_refresh ? 'warning' : 'success'} className="gap-1 font-normal">
@@ -179,10 +180,10 @@ export function AppLayout() {
               {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
             {user && (
-              <HelpTip text={`${user.email}\n${ROLE_LABEL[user.role]}`}>
+              <HelpTip text={`${user.email}\n${isSuper(user) ? 'Superuser' : ROLE_LABEL[user.role]}`}>
                 <div className="ml-1 flex items-center gap-2 rounded-full border py-1 pl-1 pr-2">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">{user.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</span>
-                  <span className="hidden max-w-[160px] flex-col leading-tight md:flex"><span className="truncate text-xs font-medium">{user.name}</span><span className="truncate text-[10px] text-muted-foreground">{ROLE_LABEL[user.role]}</span></span>
+                  <span className="hidden max-w-[160px] flex-col leading-tight md:flex"><span className="truncate text-xs font-medium">{user.name}</span><span className="truncate text-[10px] text-muted-foreground">{isSuper(user) ? 'Superuser' : ROLE_LABEL[user.role]}</span></span>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={async () => { await signOut(); nav('/welcome') }} aria-label="Sign out" title="Sign out"><LogOut className="h-3.5 w-3.5" /></Button>
                 </div>
               </HelpTip>

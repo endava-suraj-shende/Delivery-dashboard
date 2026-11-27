@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.api.auth_deps import admin_only, managers
 from app.api.deps import container, filters, loaded_container
 from app.core.exceptions import AppError, NotFoundError
-from app.db.models import ROLE_ADMIN, User
+from app.db.models import ROLE_ADMIN, ROLE_DM, User
 from app.events.event_bus import Events
 from app.services.container import Container
 from app.services.filter_service import Filters
@@ -25,8 +25,15 @@ def _visible(c: Container, user: User):
     return boards if ids is None else [b for b in boards if b.id in ids]
 
 
+def _is_super(user: User) -> bool:
+    return user.role == ROLE_ADMIN and user.is_superuser
+
+
 def _owned(c: Container, user: User, board_id: str):
+    """Boards may be changed by their owner or a superuser. Plain admins only read."""
     cfg = c.jira_boards.get(board_id)
+    if user.role == ROLE_ADMIN and not user.is_superuser:
+        raise AppError("Admins can view boards but only superusers or the board owner can change them")
     if user.role != ROLE_ADMIN and cfg.owner_id != user.id:
         raise NotFoundError(f"Board '{board_id}' not configured")
     return cfg
@@ -91,7 +98,8 @@ def connections(user: User = Depends(managers), c: Container = Depends(container
         with c.db() as db:
             owners = {u.id: u.name for u in db.execute(select(User)).scalars().all()}
     st["boards"] = [{**b, "owner_name": owners.get(b.get("owner_id") or "")} for b in st["boards"] if b.get("id") in visible]
-    st["is_admin"] = user.role == ROLE_ADMIN
+    st["is_admin"] = _is_super(user)
+    st["read_only"] = user.role == ROLE_ADMIN and not user.is_superuser
     return st
 
 
@@ -99,20 +107,27 @@ def connections(user: User = Depends(managers), c: Container = Depends(container
 def list_boards(user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
     from sqlalchemy import select
     owners: Dict[str, str] = {}
+    board_codes: Dict[str, str] = {}
     if user.role == ROLE_ADMIN:
         with c.db() as db:
             owners = {u.id: u.name for u in db.execute(select(User)).scalars().all()}
+            if user.is_superuser:
+                from app.db.models import AuthCode, CODE_KIND_BOARD
+                board_codes = {r.board_id: c.auth.code_value(r) for r in db.execute(select(AuthCode).where(AuthCode.kind == CODE_KIND_BOARD)).scalars().all()}
     items = []
     for b in _visible(c, user):
         d = b.to_dict()
         d["owner_name"] = owners.get(b.owner_id) if b.owner_id else None
-        d["can_edit"] = user.role == ROLE_ADMIN or b.owner_id == user.id
+        d["can_edit"] = _is_super(user) or b.owner_id == user.id
+        d["board_code"] = board_codes.get(b.id)
         items.append(d)
-    return {"items": items, "can_manage_credentials": user.role == ROLE_ADMIN}
+    return {"items": items, "can_manage_credentials": _is_super(user), "can_add": user.role == ROLE_DM or _is_super(user)}
 
 
 @router.post("/connections/boards")
 def add_board(body: BoardCreate, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    if user.role == ROLE_ADMIN and not user.is_superuser:
+        raise AppError("Admins can view boards but not add them")
     email, token = (body.email or "").strip(), (body.token or "").strip()
     if not (body.email_env and body.token_env) and not (email and token) and not c.jira_boards.default_credentials_info()["configured"]:
         raise AppError("Atlassian email and API token are required to add a board")
@@ -124,7 +139,26 @@ def add_board(body: BoardCreate, user: User = Depends(managers), c: Container = 
     if email and token and not c.jira_boards.default_credentials_info()["configured"]:
         c.jira_boards.set_default_credentials(email, token)
     c.bus.publish(Events.JIRA_BOARDS_CHANGED, board=cfg.label)
-    return cfg.to_dict()
+    # every linked board gets a BOARD code that the superuser can share with other delivery managers
+    with c.db() as db:
+        code = c.auth.ensure_board_code(db, cfg.id, user.id)
+        db.commit()
+        out = cfg.to_dict()
+        out["board_code"] = c.auth.code_value(code)
+    return out
+
+
+class BoardCode(BaseModel):
+    code: str
+
+
+@router.post("/connections/redeem-code")
+def redeem_board_code(body: BoardCode, user: User = Depends(managers), c: Container = Depends(container)) -> Dict[str, Any]:
+    """Delivery manager: unlock another board with its BOARD-xxxx code."""
+    with c.db() as db:
+        out = c.auth.redeem_board_code(db, user, body.code)
+        db.commit()
+    return out
 
 
 @router.put("/connections/boards/{board_id}")

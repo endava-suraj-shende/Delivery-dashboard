@@ -38,7 +38,7 @@ class Container:
 
         self.secrets = SecretBox(settings.secret_key_path)
         self.email = EmailService(settings)
-        self.auth = AuthService(settings, self.email, settings.auth_secret or self._derived_auth_secret())
+        self.auth = AuthService(settings, self.email, settings.auth_secret or self._derived_auth_secret(), box=self.secrets)
 
         self.normalizer = StatusNormalizer(settings.status_config_path, store=store("status_mapping", settings.status_config_path))
         self.store = InMemoryDataStore(self.normalizer)
@@ -61,6 +61,8 @@ class Container:
         self.upload_owners = DbJsonStore(self.db, "excel_upload_owners")  # uploaded file name -> user id
         with self.db() as s:
             self.auth.ensure_default_policy(s)
+            for b in self.jira_boards.list():  # every linked board has a shareable BOARD code
+                self.auth.ensure_board_code(s, b.id, b.owner_id)
             s.commit()
         self.analytics.source_mode = lambda: self.data.mode
         self.jira.source_mode = lambda: self.data.mode

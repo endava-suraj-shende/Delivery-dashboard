@@ -107,6 +107,18 @@ def temporary_password(user_id: str, actor: User = Depends(admin_only), c: Conta
     return out
 
 
+class Superuser(BaseModel):
+    enabled: bool
+
+
+@router.post("/users/{user_id}/superuser")
+def set_superuser(user_id: str, body: Superuser, actor: User = Depends(admin_only), c: Container = Depends(container),
+                  db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.auth.set_superuser(db, actor, user_id, body.enabled)
+    db.commit()
+    return out
+
+
 @router.post("/users/{user_id}/extend")
 def extend(user_id: str, body: Extend, actor: User = Depends(admin_only), c: Container = Depends(container),
            db: Session = Depends(get_db)) -> Dict[str, Any]:
@@ -119,6 +131,36 @@ def extend(user_id: str, body: Extend, actor: User = Depends(admin_only), c: Con
 def set_boards(user_id: str, body: BoardAccess, actor: User = Depends(admin_only), c: Container = Depends(container),
                db: Session = Depends(get_db)) -> Dict[str, Any]:
     out = c.auth.set_board_access(db, actor, user_id, body.board_ids)
+    db.commit()
+    return out
+
+
+@router.get("/delivery-managers")
+def delivery_managers(c: Container = Depends(container), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    return {"items": c.auth.dm_overview(db, c.jira_boards.list()),
+            "boards": [{"id": b.id, "label": b.label, "owner_id": b.owner_id} for b in c.jira_boards.list()]}
+
+
+@router.post("/users/{user_id}/boards/{board_id}")
+def grant_board(user_id: str, board_id: str, actor: User = Depends(admin_only), c: Container = Depends(container),
+                db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.auth.grant_board(db, actor, user_id, board_id)
+    db.commit()
+    return out
+
+
+@router.delete("/users/{user_id}/boards/{board_id}")
+def revoke_board(user_id: str, board_id: str, actor: User = Depends(admin_only), c: Container = Depends(container),
+                 db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.auth.revoke_board(db, actor, user_id, board_id)
+    db.commit()
+    return out
+
+
+@router.post("/boards/{board_id}/regenerate-code")
+def regenerate_board_code(board_id: str, actor: User = Depends(admin_only), c: Container = Depends(container),
+                          db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.auth.regenerate_board_code(db, actor, board_id)
     db.commit()
     return out
 

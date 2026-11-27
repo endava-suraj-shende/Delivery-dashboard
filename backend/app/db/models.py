@@ -16,7 +16,9 @@ ROLE_ADMIN = "admin"
 ROLE_GUEST = "guest"
 ROLES = (ROLE_EMPLOYEE, ROLE_DM, ROLE_ADMIN, ROLE_GUEST)
 ROLE_LABELS = {ROLE_EMPLOYEE: "Employee", ROLE_DM: "Delivery manager", ROLE_ADMIN: "Admin", ROLE_GUEST: "Guest"}
-CODE_ROLES = (ROLE_EMPLOYEE, ROLE_DM, ROLE_GUEST)  # roles that can be granted through an auth code
+CODE_ROLES = (ROLE_EMPLOYEE, ROLE_DM, ROLE_ADMIN, ROLE_GUEST)  # roles that can be granted through an auth code
+CODE_KIND_ROLE = "role"
+CODE_KIND_BOARD = "board"  # unlocks one Jira board for a delivery manager after sign-in
 GUEST_ACCESS_DAYS = 5
 
 STATUS_PENDING_VERIFICATION = "pending_verification"
@@ -54,6 +56,7 @@ class User(Base):
     failed_logins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # admin + user management
     access_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # guests only
     auth_code_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # code used at sign-up
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -72,7 +75,7 @@ class User(Base):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id, "email": self.email, "name": self.name, "role": self.role,
+            "id": self.id, "email": self.email, "name": self.name, "role": self.role, "is_superuser": self.is_superuser,
             "requested_role": self.requested_role, "status": self.status,
             "must_change_password": self.must_change_password,
             "email_verified_at": self.email_verified_at.isoformat() if self.email_verified_at else None,
@@ -151,7 +154,9 @@ class AuthCode(Base):
     __tablename__ = "auth_codes"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)  # sha256 for lookup
+    code_enc: Mapped[str] = mapped_column(String(512), nullable=False)  # Fernet-encrypted plaintext (shown to superusers)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default=CODE_KIND_ROLE)  # role | board
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     board_id: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("jira_boards.id", ondelete="SET NULL"), nullable=True)
     label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
@@ -172,8 +177,8 @@ class AuthCode(Base):
             return False
         return True
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"id": self.id, "code": self.code, "role": self.role, "board_id": self.board_id, "label": self.label,
+    def to_dict(self, code: Optional[str] = None) -> Dict[str, Any]:
+        return {"id": self.id, "code": code, "kind": self.kind, "role": self.role, "board_id": self.board_id, "label": self.label, "created_by": self.created_by,
                 "active": self.active, "max_uses": self.max_uses, "uses": self.uses, "usable": self.usable,
                 "expires_at": self.expires_at.isoformat() if self.expires_at else None,
                 "created_at": self.created_at.isoformat() if self.created_at else None}

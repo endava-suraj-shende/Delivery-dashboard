@@ -49,7 +49,14 @@ def require_roles(*roles: str) -> Callable[..., User]:
     return _dep
 
 
-admin_only = require_roles(ROLE_ADMIN)
+def superuser_only(user: User = Depends(active_user)) -> User:
+    if user.role != ROLE_ADMIN or not user.is_superuser:
+        raise ForbiddenError("Superuser access is required")
+    return user
+
+
+admin_only = superuser_only  # configuration / user management: superuser only
+admins = require_roles(ROLE_ADMIN)  # read everything, change nothing
 managers = require_roles(ROLE_ADMIN, ROLE_DM)
 viewers = require_roles(ROLE_ADMIN, ROLE_DM, ROLE_GUEST)  # dashboards (guests see demo data)
 anyone_active = require_roles(ROLE_ADMIN, ROLE_DM, ROLE_EMPLOYEE, ROLE_GUEST)
@@ -71,8 +78,12 @@ EMPLOYEE_EXCEL_ALLOWED = {("GET", "/status"), ("GET", "/files"), ("GET", "/histo
 
 
 def excel_access(request: Request, user: User = Depends(active_user)) -> User:
-    if user.role in (ROLE_ADMIN, ROLE_DM):
+    if user.role == ROLE_DM or (user.role == ROLE_ADMIN and user.is_superuser):
         return user
+    if user.role == ROLE_ADMIN:
+        if request.method.upper() == "GET":
+            return user
+        raise ForbiddenError("Only superusers can change data")
     path = request.url.path.split("/api/v1/excel", 1)[-1] or "/"
     base = "/" + path.strip("/").split("/")[0] if path.strip("/") else "/"
     if user.role == ROLE_GUEST:

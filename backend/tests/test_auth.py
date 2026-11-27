@@ -262,3 +262,81 @@ def test_superuser_can_approve_guest_without_email_verification(client: TestClie
     r = _login(anon, "quick.guest@partner.com")
     assert r.status_code == 200 and r.json()["user"]["role"] == "guest"
     assert anon.get("/api/v1/dashboard/executive", params={"preset": "all"}).status_code == 200
+
+
+def test_admin_code_gives_read_only_admin_and_superuser_toggle(client: TestClient, anon: TestClient):
+    code = _code(client, "admin")
+    assert code["code"].startswith("ADMIN-")
+    _signup(anon, "plain.admin@endava.com", "admin", code=code["code"])
+    r = _login(anon, "plain.admin@endava.com")
+    me = r.json()["user"]
+    assert me["status"] == "active" and me["role"] == "admin" and me["is_superuser"] is False
+    # admin: reads everything, including every board; cannot manage users / settings / boards
+    assert anon.get("/api/v1/dashboard/executive", params={"preset": "all"}).status_code == 200
+    assert anon.get("/api/v1/jira/connections/boards").status_code == 200
+    assert anon.get("/api/v1/admin/users").status_code == 403
+    assert anon.get("/api/v1/data/source").status_code == 403
+    assert anon.get("/api/v1/jira/connections/credentials").status_code == 403
+    r = anon.post("/api/v1/jira/connections/boards", json={"url": "https://fake.atlassian.net/jira/software/c/projects/A/boards/921", "test": False, "email": "a@x", "token": "t"})
+    assert r.status_code == 400
+    # superuser grants user-management access
+    uid = me["id"]
+    r = client.post(f"/api/v1/admin/users/{uid}/superuser", json={"enabled": True})
+    assert r.status_code == 200 and r.json()["is_superuser"] is True
+    assert _login(anon, "plain.admin@endava.com").status_code == 200  # token version bumped -> re-login
+    assert anon.get("/api/v1/admin/users").status_code == 200
+    # superusers cannot demote themselves
+    assert client.post(f"/api/v1/admin/users/{client.get('/api/v1/auth/me').json()['user']['id']}/superuser", json={"enabled": False}).status_code == 400
+
+
+def test_board_code_created_on_link_and_redeemable(client: TestClient, anon: TestClient):
+    # DM A links a board -> a BOARD code appears for the superuser
+    code_a = _code(client, "dm")
+    _signup(anon, "dm.a@endava.com", "dm", code=code_a["code"])
+    _login(anon, "dm.a@endava.com")
+    r = anon.post("/api/v1/jira/connections/boards", json={"url": "https://fake.atlassian.net/jira/software/c/projects/A/boards/921", "test": False, "email": "a@x.com", "token": "t"})
+    assert r.status_code == 200, r.text
+    bcode = r.json()["board_code"]
+    assert bcode.startswith("BOARD-")
+    listed = [c for c in client.get("/api/v1/admin/codes").json()["items"] if c["kind"] == "board"]
+    assert listed and listed[0]["code"] == bcode and listed[0]["board_owner"] == "Test User"
+    # DM B redeems it on Jira Connections and now sees the board (read-only)
+    dm_b = TestClient(client.app)
+    _signup(dm_b, "dm.b@endava.com", "dm", code=_code(client, "dm")["code"])
+    _login(dm_b, "dm.b@endava.com")
+    assert dm_b.get("/api/v1/jira/connections/boards").json()["items"] == []
+    assert dm_b.post("/api/v1/jira/connections/redeem-code", json={"code": "BOARD-NOPE-0000"}).status_code == 400
+    r = dm_b.post("/api/v1/jira/connections/redeem-code", json={"code": bcode})
+    assert r.status_code == 200
+    items = dm_b.get("/api/v1/jira/connections/boards").json()["items"]
+    assert len(items) == 1 and items[0]["can_edit"] is False
+    # a role code cannot be used as a board code
+    assert dm_b.post("/api/v1/jira/connections/redeem-code", json={"code": code_a["code"]}).status_code == 400
+
+
+def test_superuser_grants_and_revokes_boards_and_regenerates_code(client: TestClient, anon: TestClient):
+    _signup(anon, "dm.owner@endava.com", "dm", code=_code(client, "dm")["code"])
+    _login(anon, "dm.owner@endava.com")
+    assert anon.get("/api/v1/auth/me").json()["user"]["board_count"] == 0  # -> onboarding screen
+    r = anon.post("/api/v1/jira/connections/boards", json={"url": "https://fake.atlassian.net/jira/software/c/projects/A/boards/921", "test": False, "email": "a@x.com", "token": "t"})
+    bid, old_code = r.json()["id"], r.json()["board_code"]
+    assert anon.get("/api/v1/auth/me").json()["user"]["board_count"] == 1
+
+    other = TestClient(client.app)
+    _signup(other, "dm.other@endava.com", "dm", code=_code(client, "dm")["code"])
+    _login(other, "dm.other@endava.com")
+    uid = other.get("/api/v1/auth/me").json()["user"]["id"]
+    ov = client.get("/api/v1/admin/delivery-managers").json()["items"]
+    me_row = next(x for x in ov if x["user"]["id"] == uid)
+    assert me_row["owned"] == [] and me_row["granted"] == [] and [b["id"] for b in me_row["available"]] == [bid]
+    # grant -> visible; revoke -> gone
+    assert client.post(f"/api/v1/admin/users/{uid}/boards/{bid}").status_code == 200
+    assert [b["id"] for b in other.get("/api/v1/jira/connections/boards").json()["items"]] == [bid]
+    assert other.get("/api/v1/auth/me").json()["user"]["board_count"] == 1
+    assert client.delete(f"/api/v1/admin/users/{uid}/boards/{bid}").status_code == 200
+    assert other.get("/api/v1/jira/connections/boards").json()["items"] == []
+    # regenerate: old code dead, new code works
+    new_code = client.post(f"/api/v1/admin/boards/{bid}/regenerate-code").json()["code"]
+    assert new_code != old_code
+    assert other.post("/api/v1/jira/connections/redeem-code", json={"code": old_code}).status_code == 400
+    assert other.post("/api/v1/jira/connections/redeem-code", json={"code": new_code}).status_code == 200

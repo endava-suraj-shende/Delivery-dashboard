@@ -13,6 +13,7 @@ import { Input, Label, NativeSelect } from '@/components/ui/input'
 import { Switch } from '@/components/ui/primitives'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast'
+import { useSession } from '@/hooks/useSession'
 import { errorMessage } from '@/services/api'
 import { jiraLiveApi, type JiraBoard } from '@/services/jiraApi'
 import { DataSourceCard } from '@/components/common/DataSourceCard'
@@ -37,9 +38,10 @@ export default function JiraConnectionsPage() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['jira'] })
   const creds = { email_env: emailEnv || undefined, token_env: tokenEnv || undefined, email: email.trim() || undefined, token: token.trim() || undefined }
   const test = useMutation({ mutationFn: () => jiraLiveApi.testUrl({ url, ...creds }), onSuccess: setTestResult, onError: (e) => toast({ title: 'Test failed', description: errorMessage(e), variant: 'destructive' }) })
+  const { refresh: refreshSession } = useSession()
   const add = useMutation({
     mutationFn: () => jiraLiveApi.addBoard({ url, label: label || undefined, ...creds }),
-    onSuccess: (b) => { qc.invalidateQueries(); setUrl(''); setLabel(''); setEmail(''); setToken(''); setTestResult(null); toast({ title: 'Board added', description: `${b.label} (${b.project_key ?? '?'} | board ${b.board_id}) - saved; it will be loaded automatically from now on`, variant: 'success' }) },
+    onSuccess: (b) => { qc.invalidateQueries(); void refreshSession(); setUrl(''); setLabel(''); setEmail(''); setToken(''); setTestResult(null); toast({ title: 'Board added', description: `${b.label} (${b.project_key ?? '?'} | board ${b.board_id}) - saved; it will be loaded automatically from now on`, variant: 'success' }) },
     onError: (e) => toast({ title: 'Could not add board', description: errorMessage(e), variant: 'destructive' }),
   })
   const update = useMutation({ mutationFn: ({ id, body }: { id: string; body: Parameters<typeof jiraLiveApi.updateBoard>[1] }) => jiraLiveApi.updateBoard(id, body), onSuccess: invalidate, onError: (e) => toast({ title: 'Update failed', description: errorMessage(e), variant: 'destructive' }) })
@@ -98,8 +100,10 @@ export default function JiraConnectionsPage() {
             </Notice>
           )}
           {s.is_admin && <DataSourceCard compact />}
-          {s.is_admin ? <CredentialsCard status={s} /> : (
-            <Notice tone="info" icon={KeyRound}>You see only the boards you configured. Dashboards and reports are limited to those boards. Each board uses the Atlassian account you enter when adding it.</Notice>
+          {s.is_admin ? <CredentialsCard status={s} /> : s.read_only ? (
+            <Notice tone="info" icon={KeyRound}>You can view every configured board and its data. Only the board owner or a superuser can add, change or remove boards.</Notice>
+          ) : (
+            <RedeemBoardCode />
           )}
 
           <Tabs defaultValue="boards">
@@ -239,6 +243,28 @@ function StepLabel({ n, title, done }: { n: number; title: string; done?: boolea
   )
 }
 
+function RedeemBoardCode() {
+  const qc = useQueryClient()
+  const { toast } = useToast()
+  const { refresh: refreshSession } = useSession()
+  const [code, setCode] = useState('')
+  const redeem = useMutation({
+    mutationFn: () => jiraLiveApi.redeemBoardCode(code.trim()),
+    onSuccess: (r) => { qc.invalidateQueries(); void refreshSession(); setCode(''); toast({ title: 'Board linked', description: r.label ?? 'You now see this board\'s data', variant: 'success' }) },
+    onError: (e) => toast({ title: 'Could not link board', description: errorMessage(e), variant: 'destructive' }),
+  })
+  return (
+    <Notice tone="info" icon={KeyRound} action={
+      <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim()) redeem.mutate() }}>
+        <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="BOARD-XXXX-XXXX" className="h-9 w-[200px] font-mono uppercase tracking-wider" />
+        <Button type="submit" size="sm" className="h-9" disabled={redeem.isPending || !code.trim()}>Link board</Button>
+      </form>
+    }>
+      You see the boards you configured plus any unlocked with a board code. Have a board code from the superuser? Enter it here to see that board's data too.
+    </Notice>
+  )
+}
+
 function CredentialsCard({ status: s }: { status: import('@/services/jiraApi').JiraStatus }) {
   const qc = useQueryClient()
   const { toast } = useToast()
@@ -313,6 +339,7 @@ function BoardRow({ board: b, excelBoardNames, onToggle, onLabel, onAliases, onT
         {b.has_custom_credentials && <Badge variant="secondary" title={b.credential_source === 'ui' ? `Own credentials (${b.email ?? 'email n/a'}), token encrypted` : `Uses ${b.token_env}`}>own credentials{b.email ? `: ${b.email}` : ''}</Badge>}
         {b.people.length > 0 && <Badge variant="info" title={b.people.join(', ')}><Users className="mr-1 h-3 w-3" /> {b.people.length} people</Badge>}
         {b.owner_name && <Badge variant="outline" title="Configured by">owner: {b.owner_name}</Badge>}
+        {b.board_code && <Badge variant="secondary" className="font-mono" title="Board code (share with other delivery managers)">{b.board_code}</Badge>}
         {b.last_test_ok === true && <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> reachable</Badge>}
         {b.last_test_ok === false && <Badge variant="danger" className="gap-1" title={b.last_error ?? ''}><AlertTriangle className="h-3 w-3" /> {b.last_error?.slice(0, 60) ?? 'error'}</Badge>}
         <span className="ml-auto text-xs text-muted-foreground">{b.last_sync ? `synced ${new Date(b.last_sync).toLocaleString()} | ${b.last_sync_issues} issues` : 'not synced yet'}</span>

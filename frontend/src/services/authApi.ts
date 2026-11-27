@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string
   name: string
   role: Role
+  is_superuser: boolean
   requested_role: Role
   status: AccountStatus
   must_change_password: boolean
@@ -19,6 +20,7 @@ export interface AuthUser {
   access_expires_at: string | null
   access_expired: boolean
   board_ids: string[]
+  board_count?: number
 }
 
 export interface AuthOptions {
@@ -39,7 +41,7 @@ export const ROLE_LABEL: Record<Role, string> = { employee: 'Employee', dm: 'Del
 export const ROLE_HELP: Record<Role, string> = {
   employee: 'Upload your bi-weekly workbooks and check they were received. Needs the auth code from your lead.',
   dm: 'Dashboards and reports for your boards. Needs the auth code from the administrator.',
-  admin: 'Full access. Requires e-mail verification and superuser approval.',
+  admin: 'View every board and dashboard. Needs an admin auth code, or e-mail verification plus superuser approval.',
   guest: 'Explore the dashboards on demo data for 5 days. Requires a guest auth code and e-mail verification.',
 }
 export const STATUS_LABEL: Record<AccountStatus, string> = {
@@ -66,7 +68,8 @@ export const authApi = {
     api.post<{ ok: boolean; user: AuthUser }>('/auth/change-password', { current_password, password, confirm_password }).then((r) => r.data.user),
 }
 
-export interface AuthCode { id: string; code: string; role: Role; board_id: string | null; board_label?: string | null; label: string | null; active: boolean; max_uses: number | null; uses: number; usable: boolean; expires_at: string | null; created_at: string | null }
+export interface AuthCode { id: string; code: string | null; kind: 'role' | 'board'; role: Role; board_id: string | null; board_label?: string | null; board_owner?: string | null; created_by_name?: string | null; label: string | null; active: boolean; max_uses: number | null; uses: number; usable: boolean; expires_at: string | null; created_at: string | null }
+export interface DmOverview { user: AuthUser; owned: { id: string; label: string }[]; granted: { id: string; label: string; via: string | null; since: string | null }[]; available: { id: string; label: string }[] }
 export interface AccessRule { id: string; kind: 'domain' | 'email'; value: string; note: string | null; created_at: string | null }
 export interface AuditEntry { id: number; action: string; target: string | null; detail: Record<string, unknown> | null; actor: string | null; created_at: string }
 
@@ -83,8 +86,13 @@ export const adminApi = {
   policy: () => api.get<{ domains: AccessRule[]; emails: AccessRule[]; defaults: string[] }>('/admin/access-policy').then((r) => r.data),
   addRule: (kind: 'domain' | 'email', value: string, note?: string) => api.post<AccessRule>('/admin/access-policy', { kind, value, note }).then((r) => r.data),
   removeRule: (id: string) => api.delete(`/admin/access-policy/${id}`).then(() => undefined),
+  setSuperuser: (id: string, enabled: boolean) => api.post<AuthUser>(`/admin/users/${id}/superuser`, { enabled }).then((r) => r.data),
   extend: (id: string, body: { days?: number; until?: string }) => api.post<AuthUser>(`/admin/users/${id}/extend`, body).then((r) => r.data),
   setBoards: (id: string, board_ids: string[]) => api.put<AuthUser>(`/admin/users/${id}/boards`, { board_ids }).then((r) => r.data),
+  deliveryManagers: () => api.get<{ items: DmOverview[]; boards: { id: string; label: string; owner_id: string | null }[] }>('/admin/delivery-managers').then((r) => r.data),
+  grantBoard: (userId: string, boardId: string) => api.post<AuthUser>(`/admin/users/${userId}/boards/${boardId}`).then((r) => r.data),
+  revokeBoard: (userId: string, boardId: string) => api.delete<AuthUser>(`/admin/users/${userId}/boards/${boardId}`).then((r) => r.data),
+  regenerateBoardCode: (boardId: string) => api.post<AuthCode>(`/admin/boards/${boardId}/regenerate-code`).then((r) => r.data),
   codes: () => api.get<{ items: AuthCode[]; boards: { id: string; label: string }[] }>('/admin/codes').then((r) => r.data),
   createCode: (body: { role: Role; label?: string; board_id?: string; expires_days?: number; max_uses?: number; code?: string }) => api.post<AuthCode>('/admin/codes', body).then((r) => r.data),
   revokeCode: (id: string) => api.post<AuthCode>(`/admin/codes/${id}/revoke`).then((r) => r.data),

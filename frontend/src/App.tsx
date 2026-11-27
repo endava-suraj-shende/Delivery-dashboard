@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppLayout } from '@/layouts/AppLayout'
 import { FilterProvider } from '@/hooks/useFilters'
 import { ThemeProvider } from '@/hooks/useTheme'
-import { homeFor, SessionProvider, useSession } from '@/hooks/useSession'
+import { homeFor, isSuper, SessionProvider, useSession } from '@/hooks/useSession'
 import type { Role } from '@/services/authApi'
 import { ToastProvider } from '@/components/ui/toast'
 import { TooltipProvider } from '@/components/ui/primitives'
@@ -32,6 +32,7 @@ const UsersAdminPage = lazy(() => import('@/modules/admin/UsersAdminPage'))
 const VerifyEmailPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.VerifyEmailPage })))
 const ResetPasswordPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.ResetPasswordPage })))
 const ChangePasswordPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.ChangePasswordPage })))
+const OnboardingPage = lazy(() => import('@/modules/auth/OnboardingPage'))
 const PendingApprovalPage = lazy(() => import('@/modules/auth/AuthPages').then((m) => ({ default: m.PendingApprovalPage })))
 
 /** Which roles may open each route. Anything not listed is open to every active user. */
@@ -42,6 +43,8 @@ export const ROUTE_ROLES: Record<string, Role[]> = {
   '/excel': ['admin', 'dm', 'employee'], '/config/jira': ['admin', 'dm'],
   '/config/status': ['admin'], '/settings': ['admin'], '/admin/users': ['admin'],
 }
+/** Routes that additionally require the superuser flag. */
+export const SUPERUSER_ROUTES = ['/config/status', '/settings', '/admin/users']
 
 export function rolesFor(pathname: string): Role[] | undefined {
   const keys = Object.keys(ROUTE_ROLES).sort((a, b) => b.length - a.length)
@@ -72,6 +75,8 @@ function RequireActive() {
   if (user.status !== 'active' || user.access_expired) return <Navigate to="/pending" replace />
   const allowed = rolesFor(loc.pathname)
   if (allowed && !allowed.includes(user.role)) return <Navigate to={homeFor(user)} replace />
+  if (SUPERUSER_ROUTES.some((r) => loc.pathname === r || loc.pathname.startsWith(r + '/')) && !isSuper(user)) return <Navigate to={homeFor(user)} replace />
+  if (user.role === 'dm' && (user.board_count ?? 0) === 0 && !['/onboarding', '/config/jira', '/excel'].some((r) => loc.pathname === r || loc.pathname.startsWith(r + '/'))) return <Navigate to="/onboarding" replace />
   return <Outlet />
 }
 
@@ -97,6 +102,7 @@ export default function App() {
                   <Route path="pending" element={<Lazy><PendingApprovalPage /></Lazy>} />
                   <Route path="change-password" element={<Lazy><ChangePasswordPage /></Lazy>} />
                   <Route element={<RequireActive />}>
+                  <Route path="onboarding" element={<Lazy><OnboardingPage /></Lazy>} />
                   <Route element={<AppLayout />}>
                     <Route
                       index

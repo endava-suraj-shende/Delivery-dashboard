@@ -67,7 +67,7 @@ def options(c: Container = Depends(container), db: Session = Depends(get_db)) ->
             "allowed_domains": [d["value"] for d in pol["domains"]],
             "email_enabled": c.email.enabled,
             "password_rules": "At least 10 characters with upper and lower case letters, a digit and a symbol.",
-            "code_roles": ["employee", "dm", "guest"], "guest_days": 5}
+            "code_roles": ["employee", "dm", "admin", "guest"], "guest_days": 5}
 
 
 @router.post("/signup")
@@ -96,7 +96,9 @@ def login(body: Login, response: Response, c: Container = Depends(container), db
     out = c.auth.login(db, body.email, body.password)
     db.commit()
     _set_cookie(response, c, out["token"])
-    return {"user": out["user"]}
+    from app.db.models import User as U
+    u = db.get(U, out["user"]["id"])
+    return {"user": _with_boards(c, u) if u else out["user"]}
 
 
 @router.post("/logout")
@@ -114,9 +116,18 @@ def logout_all(response: Response, user: User = Depends(current_user), c: Contai
     return {"ok": True}
 
 
+def _with_boards(c: Container, user: User) -> Dict[str, Any]:
+    d = user.to_dict()
+    if user.role == "dm":
+        from app.api.auth_deps import visible_board_ids
+        ids = visible_board_ids(c, user) or set()
+        d["board_count"] = len(ids)
+    return d
+
+
 @router.get("/me")
-def me(user: Optional[User] = Depends(optional_user)) -> Dict[str, Any]:
-    return {"user": user.to_dict() if user else None}
+def me(user: Optional[User] = Depends(optional_user), c: Container = Depends(container)) -> Dict[str, Any]:
+    return {"user": _with_boards(c, user) if user else None}
 
 
 @router.post("/forgot-password")

@@ -21,6 +21,7 @@ export function homeFor(u: SessionUser | null): string {
   if (!u) return '/welcome'
   if (u.must_change_password) return '/change-password'
   if (u.status !== 'active' || u.access_expired) return '/pending'
+  if (u.role === 'dm' && (u.board_count ?? 0) === 0) return '/onboarding'
   return u.role === 'employee' ? '/excel' : '/'
 }
 
@@ -65,4 +66,8 @@ export function useSession(): SessionCtx {
 
 export function can(user: SessionUser | null, ...roles: Role[]): boolean {
   return !!user && user.status === 'active' && roles.includes(user.role)
+}
+
+export function isSuper(user: SessionUser | null): boolean {
+  return !!user && user.role === 'admin' && user.is_superuser && user.status === 'active'
 }

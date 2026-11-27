@@ -21,7 +21,7 @@ from app.core.security import (constant_time_equals, create_session_token, decod
                                hash_password, needs_rehash, new_token, password_problems, token_hash, verify_password)
 import secrets
 
-from app.db.models import (CODE_ROLES, GUEST_ACCESS_DAYS, ROLE_ADMIN, ROLE_DM, ROLE_EMPLOYEE, ROLE_GUEST, ROLE_LABELS, ROLES,
+from app.db.models import (CODE_KIND_BOARD, CODE_KIND_ROLE, CODE_ROLES, GUEST_ACCESS_DAYS, ROLE_ADMIN, ROLE_DM, ROLE_EMPLOYEE, ROLE_GUEST, ROLE_LABELS, ROLES,
                            STATUS_ACTIVE, STATUS_DISABLED, STATUS_PENDING_APPROVAL, STATUS_PENDING_VERIFICATION,
                            STATUS_REJECTED, AccessRule, AuditLog, AuthCode, AuthToken, JiraBoard, User, UserBoardAccess,
                            utcnow)
@@ -43,10 +43,22 @@ def normalize_email(email: str) -> str:
 
 
 class AuthService:
-    def __init__(self, settings: Settings, email: EmailService, secret: str) -> None:
+    def __init__(self, settings: Settings, email: EmailService, secret: str, box: Any = None) -> None:
         self.s = settings
         self.email = email
         self._secret = secret
+        self._box = box  # SecretBox: auth codes are stored encrypted, looked up by sha256
+
+    def _code_plain(self, row: AuthCode) -> Optional[str]:
+        try:
+            return self._box.decrypt(row.code_enc) if self._box else None
+        except Exception:  # noqa: BLE001 - key rotated: code can no longer be shown
+            return None
+
+    def _new_code_row(self, value: str, **kw: Any) -> AuthCode:
+        if not self._box:
+            raise AppError("Secret storage is not configured")
+        return AuthCode(code_hash=token_hash(value), code_enc=self._box.encrypt(value), **kw)
 
     # ------------------------------------------------------------------ helpers
     def _audit(self, db: Session, actor: Optional[str], action: str, target: Optional[str] = None, **detail: Any) -> None:
@@ -130,10 +142,10 @@ class AuthService:
     # ------------------------------------------------------------------ sign-up / verification
     # ------------------------------------------------------------------ auth codes
     def _find_code(self, db: Session, code: str) -> Optional[AuthCode]:
-        code = (code or "").strip()
+        code = (code or "").strip().upper()
         if not code:
             return None
-        return db.execute(select(AuthCode).where(AuthCode.code == code)).scalar_one_or_none()
+        return db.execute(select(AuthCode).where(AuthCode.code_hash == token_hash(code))).scalar_one_or_none()
 
     def _consume_code(self, db: Session, user: User, code: AuthCode) -> None:
         code.uses += 1
@@ -163,10 +175,12 @@ class AuthService:
         code: Optional[AuthCode] = None
         if requested_role in CODE_ROLES:
             if not (auth_code or "").strip():
-                raise AppError("Auth code is required")
-            code = self._find_code(db, auth_code or "")
-            if code is None or not code.usable or code.role != requested_role:
-                raise AppError("Auth code is wrong")
+                if requested_role != ROLE_ADMIN:
+                    raise AppError("Auth code is required")
+            if (auth_code or "").strip():
+                code = self._find_code(db, auth_code or "")
+                if code is None or not code.usable or code.kind != CODE_KIND_ROLE or code.role != requested_role:
+                    raise AppError("Auth code is wrong")
         # employees, delivery managers and admins must use a company address; guests are vouched for by their code
         if requested_role != ROLE_GUEST and not self.is_email_allowed(db, email):
             raise AppError("This e-mail address is not allowed to register. Use your company e-mail or ask an administrator to allow-list your address.")
@@ -185,7 +199,7 @@ class AuthService:
             db.flush()
         if code is not None:
             self._consume_code(db, user, code)
-        if code is not None and requested_role in (ROLE_EMPLOYEE, ROLE_DM):
+        if code is not None and requested_role in (ROLE_EMPLOYEE, ROLE_DM, ROLE_ADMIN):
             # valid code: no e-mail verification and no approval needed
             user.status, user.approved_at = STATUS_ACTIVE, utcnow()
             self._audit(db, user.id, "auth.signup_code", user.email, role=requested_role, code=code.label or code.id)
@@ -373,6 +387,8 @@ class AuthService:
         if user.id == actor.id and role != ROLE_ADMIN:
             raise AppError("You cannot remove your own admin role")
         user.role = role
+        if role != ROLE_ADMIN:
+            user.is_superuser = False
         user.token_version += 1
         self._audit(db, actor.id, "user.role", user.email, role=role)
         return user.to_dict()
@@ -429,53 +445,100 @@ class AuthService:
         return user.to_dict()
 
     def list_codes(self, db: Session) -> List[Dict[str, Any]]:
-        boards = {b.id: b.label for b in db.execute(select(JiraBoard)).scalars().all()}
+        boards = {b.id: b for b in db.execute(select(JiraBoard)).scalars().all()}
+        users = {u.id: u.name for u in db.execute(select(User)).scalars().all()}
         out = []
         for c in db.execute(select(AuthCode).order_by(AuthCode.created_at.desc())).scalars().all():
-            d = c.to_dict()
-            d["board_label"] = boards.get(c.board_id) if c.board_id else None
+            d = c.to_dict(self._code_plain(c))
+            b = boards.get(c.board_id) if c.board_id else None
+            d["board_label"] = b.label if b else None
+            d["board_owner"] = users.get(b.owner_id) if b and b.owner_id else None
+            d["created_by_name"] = users.get(c.created_by) if c.created_by else None
             out.append(d)
         return out
 
     def create_code(self, db: Session, actor: User, role: str, label: Optional[str], board_id: Optional[str],
                     expires_days: Optional[int], max_uses: Optional[int], code: Optional[str] = None) -> Dict[str, Any]:
         if role not in CODE_ROLES:
-            raise AppError("Codes can grant Employee, Delivery manager or Guest access")
+            raise AppError("Codes can grant Employee, Delivery manager, Admin or Guest access")
         if board_id:
             if role != ROLE_DM:
                 raise AppError("Only delivery manager codes can be tied to a board")
             if db.get(JiraBoard, board_id) is None:
                 raise NotFoundError("Board not found")
         value = (code or "").strip().upper() or self._generate_code(role)
-        if db.execute(select(AuthCode).where(AuthCode.code == value)).scalar_one_or_none():
+        if self._find_code(db, value) is not None:
             raise AppError("This code already exists")
-        row = AuthCode(code=value, role=role, board_id=board_id or None, label=(label or "").strip() or None,
-                       expires_at=(utcnow() + timedelta(days=int(expires_days))) if expires_days else None,
-                       max_uses=int(max_uses) if max_uses else None, created_by=actor.id)
+        row = self._new_code_row(value, role=role, board_id=board_id or None, label=(label or "").strip() or None,
+                                 expires_at=(utcnow() + timedelta(days=int(expires_days))) if expires_days else None,
+                                 max_uses=int(max_uses) if max_uses else None, created_by=actor.id)
         db.add(row)
         db.flush()
-        self._audit(db, actor.id, "code.create", value, role=role, board_id=board_id)
-        return {**row.to_dict(), "board_label": db.get(JiraBoard, board_id).label if board_id else None}
+        self._audit(db, actor.id, "code.create", row.id, role=role, board_id=board_id)
+        return {**row.to_dict(value), "board_label": db.get(JiraBoard, board_id).label if board_id else None}
 
     @staticmethod
     def _generate_code(role: str) -> str:
-        prefix = {ROLE_EMPLOYEE: "EMP", ROLE_DM: "DM", ROLE_GUEST: "GUEST"}[role]
+        prefix = {ROLE_EMPLOYEE: "EMP", ROLE_DM: "DM", ROLE_ADMIN: "ADMIN", ROLE_GUEST: "GUEST", "board": "BOARD"}[role]
         alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         return f"{prefix}-" + "".join(secrets.choice(alphabet) for _ in range(4)) + "-" + "".join(secrets.choice(alphabet) for _ in range(4))
+
+    def ensure_board_code(self, db: Session, board_id: str, owner_id: Optional[str]) -> AuthCode:
+        """Every linked board gets one reusable BOARD-xxxx code; the superuser hands it to other delivery managers."""
+        row = db.execute(select(AuthCode).where(AuthCode.kind == CODE_KIND_BOARD, AuthCode.board_id == board_id)).scalar_one_or_none()
+        if row is None:
+            board = db.get(JiraBoard, board_id)
+            row = self._new_code_row(self._generate_code("board"), kind=CODE_KIND_BOARD, role=ROLE_DM, board_id=board_id,
+                                     label=f"Board access: {board.label if board else board_id}", created_by=owner_id)
+            db.add(row)
+            db.flush()
+            self._audit(db, owner_id, "code.board_created", row.id, board_id=board_id)
+        return row
+
+    def code_value(self, row: AuthCode) -> Optional[str]:
+        return self._code_plain(row)
+
+    def redeem_board_code(self, db: Session, user: User, code: str) -> Dict[str, Any]:
+        """A signed-in delivery manager unlocks a board with its BOARD code."""
+        if user.role != ROLE_DM:
+            raise AppError("Only delivery managers link boards with a board code")
+        row = self._find_code(db, code)
+        if row is None or row.kind != CODE_KIND_BOARD or not row.usable or not row.board_id:
+            raise AppError("Auth code is wrong")
+        if db.get(JiraBoard, row.board_id) is None:
+            raise AppError("This board no longer exists")
+        exists = db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == user.id, UserBoardAccess.board_id == row.board_id)).scalar_one_or_none()
+        if exists is None:
+            db.add(UserBoardAccess(user_id=user.id, board_id=row.board_id, granted_via=row.id))
+            row.uses += 1
+        self._audit(db, user.id, "code.board_redeemed", row.id, board_id=row.board_id)
+        db.flush()
+        return {"board_id": row.board_id, "label": row.label}
+
+    def set_superuser(self, db: Session, actor: User, user_id: str, enabled: bool) -> Dict[str, Any]:
+        user = self._get(db, user_id)
+        if user.id == actor.id and not enabled:
+            raise AppError("You cannot remove your own superuser access")
+        if enabled and user.role != ROLE_ADMIN:
+            raise AppError("Only admins can be made superuser; change the role first")
+        user.is_superuser = enabled
+        user.token_version += 1
+        self._audit(db, actor.id, "user.superuser" if enabled else "user.superuser_revoked", user.email)
+        return user.to_dict()
 
     def set_code_active(self, db: Session, actor: User, code_id: str, active: bool) -> Dict[str, Any]:
         row = db.get(AuthCode, code_id)
         if row is None:
             raise NotFoundError("Code not found")
         row.active = active
-        self._audit(db, actor.id, "code.enable" if active else "code.revoke", row.code)
-        return row.to_dict()
+        self._audit(db, actor.id, "code.enable" if active else "code.revoke", row.id)
+        return row.to_dict(self._code_plain(row))
 
     def delete_code(self, db: Session, actor: User, code_id: str) -> None:
         row = db.get(AuthCode, code_id)
         if row is None:
             raise NotFoundError("Code not found")
-        self._audit(db, actor.id, "code.delete", row.code)
+        self._audit(db, actor.id, "code.delete", row.id)
         db.delete(row)
 
     def set_board_access(self, db: Session, actor: User, user_id: str, board_ids: List[str]) -> Dict[str, Any]:
@@ -494,6 +557,60 @@ class AuthService:
         db.refresh(user)
         self._audit(db, actor.id, "user.board_access", user.email, boards=sorted(wanted))
         return user.to_dict()
+
+    def dm_overview(self, db: Session, boards: List[Any]) -> List[Dict[str, Any]]:
+        """One row per delivery manager: boards they own and boards granted to them."""
+        by_id = {b.id: b for b in boards}
+        grants = db.execute(select(UserBoardAccess)).scalars().all()
+        granted: Dict[str, List[UserBoardAccess]] = {}
+        for g in grants:
+            granted.setdefault(g.user_id, []).append(g)
+        out = []
+        for u in db.execute(select(User).where(User.role == ROLE_DM).order_by(User.name)).scalars().all():
+            owned = [{"id": b.id, "label": b.label} for b in boards if b.owner_id == u.id]
+            gr = [{"id": g.board_id, "label": by_id[g.board_id].label if g.board_id in by_id else g.board_id, "via": g.granted_via,
+                   "since": g.created_at.isoformat() if g.created_at else None} for g in granted.get(u.id, []) if g.board_id in by_id]
+            out.append({"user": u.to_dict(), "owned": owned, "granted": gr,
+                        "available": [{"id": b.id, "label": b.label} for b in boards if b.owner_id != u.id and b.id not in {x["id"] for x in gr}]})
+        return out
+
+    def grant_board(self, db: Session, actor: User, user_id: str, board_id: str) -> Dict[str, Any]:
+        user = self._get(db, user_id)
+        if user.role != ROLE_DM:
+            raise AppError("Boards can only be granted to delivery managers")
+        if db.get(JiraBoard, board_id) is None:
+            raise NotFoundError("Board not found")
+        exists = db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == user_id, UserBoardAccess.board_id == board_id)).scalar_one_or_none()
+        if exists is None:
+            code = self.ensure_board_code(db, board_id, actor.id)
+            db.add(UserBoardAccess(user_id=user_id, board_id=board_id, granted_via=code.id))
+            code.uses += 1
+        self._audit(db, actor.id, "user.board_grant", user.email, board_id=board_id)
+        db.flush()
+        db.refresh(user)
+        return user.to_dict()
+
+    def revoke_board(self, db: Session, actor: User, user_id: str, board_id: str) -> Dict[str, Any]:
+        user = self._get(db, user_id)
+        row = db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == user_id, UserBoardAccess.board_id == board_id)).scalar_one_or_none()
+        if row is not None:
+            db.delete(row)
+        self._audit(db, actor.id, "user.board_revoke", user.email, board_id=board_id)
+        db.flush()
+        db.refresh(user)
+        return user.to_dict()
+
+    def regenerate_board_code(self, db: Session, actor: User, board_id: str) -> Dict[str, Any]:
+        """Issue a fresh BOARD code (old one stops working); existing grants are kept."""
+        row = db.execute(select(AuthCode).where(AuthCode.kind == CODE_KIND_BOARD, AuthCode.board_id == board_id)).scalar_one_or_none()
+        if row is None:
+            row = self.ensure_board_code(db, board_id, actor.id)
+        value = self._generate_code("board")
+        row.code_hash, row.code_enc = token_hash(value), self._box.encrypt(value)
+        row.active = True
+        self._audit(db, actor.id, "code.board_regenerated", row.id, board_id=board_id)
+        db.flush()
+        return row.to_dict(value)
 
     def granted_board_ids(self, db: Session, user_id: str) -> List[str]:
         return [r.board_id for r in db.execute(select(UserBoardAccess).where(UserBoardAccess.user_id == user_id)).scalars().all()]
@@ -518,6 +635,7 @@ class AuthService:
         else:
             user.password_hash = hash_password(password)
         user.role = user.requested_role = ROLE_ADMIN
+        user.is_superuser = True
         user.status = STATUS_ACTIVE
         user.email_verified_at = user.email_verified_at or utcnow()
         user.approved_at = utcnow()
