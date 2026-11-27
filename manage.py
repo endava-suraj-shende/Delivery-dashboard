@@ -4,6 +4,8 @@
     python manage.py migrate                   # create / upgrade the database schema and import legacy JSON config
     python manage.py create-superuser          # interactive: first admin account
     python manage.py create-superuser --email a@b.com --name "Admin" --password '...'
+    python manage.py create-demo-superuser     # superuser locked to synthetic demo data (stakeholder demos)
+    python manage.py create-demo-dm            # delivery manager locked to synthetic demo data
     python manage.py makemigrations -m "add x" # generate a new Alembic revision from model changes
     python manage.py db-status                 # show database URL and current revision
     python manage.py allow-domain example.com  # add an allowed sign-up domain
@@ -65,6 +67,46 @@ def cmd_create_superuser(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_create_demo_superuser(args: argparse.Namespace) -> int:
+    """A superuser that only ever sees synthetic demo data (safe to hand to stakeholders)."""
+    from app.services.container import get_container
+    email = args.email or "demo.admin@example.com"
+    password = args.password or "Demo-Admin-2026!"
+    c = get_container()
+    with c.db() as db:
+        user = c.auth.create_superuser(db, email, args.name or "Demo Superuser", password)
+        user.demo_only = True
+        user.demo_mode = True
+        db.commit()
+        print(f"Demo superuser ready: {user.email} / {password} (demo data only)")
+    return 0
+
+
+def cmd_create_demo_dm(args: argparse.Namespace) -> int:
+    """A delivery manager locked to synthetic demo data (sees the demo Phoenix boards)."""
+    from app.db.models import ROLE_DM, STATUS_ACTIVE, User, utcnow
+    from app.core.security import hash_password
+    from sqlalchemy import select
+    from app.services.container import get_container
+    email = args.email or "demo.manager@example.com"
+    password = args.password or "Demo-Manager-2026!"
+    c = get_container()
+    with c.db() as db:
+        u = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if u is None:
+            u = User(email=email, name=args.name or "Demo Delivery Manager")
+            db.add(u)
+        u.password_hash = hash_password(password)
+        u.role = u.requested_role = ROLE_DM
+        u.status = STATUS_ACTIVE
+        u.email_verified_at = u.approved_at = utcnow()
+        u.demo_only = u.demo_mode = True
+        u.must_change_password = False
+        db.commit()
+        print(f"Demo delivery manager ready: {u.email} / {password} (demo data only)")
+    return 0
+
+
 def cmd_makemigrations(args: argparse.Namespace) -> int:
     from app.db.migrate import make_revision
     make_revision(_settings(), args.message)
@@ -99,6 +141,12 @@ def main() -> int:
     su = sub.add_parser("create-superuser", help="create or reset the admin account")
     su.add_argument("--email"); su.add_argument("--name"); su.add_argument("--password")
     su.set_defaults(fn=cmd_create_superuser)
+    ds = sub.add_parser("create-demo-superuser", help="superuser account locked to synthetic demo data")
+    ds.add_argument("--email"); ds.add_argument("--name"); ds.add_argument("--password")
+    ds.set_defaults(fn=cmd_create_demo_superuser)
+    dd = sub.add_parser("create-demo-dm", help="delivery manager account locked to synthetic demo data")
+    dd.add_argument("--email"); dd.add_argument("--name"); dd.add_argument("--password")
+    dd.set_defaults(fn=cmd_create_demo_dm)
     mk = sub.add_parser("makemigrations", help="autogenerate an Alembic revision")
     mk.add_argument("-m", "--message", required=True)
     mk.set_defaults(fn=cmd_makemigrations)

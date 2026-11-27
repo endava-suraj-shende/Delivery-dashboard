@@ -57,6 +57,8 @@ class User(Base):
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # admin + user management
+    demo_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # superuser presenting on synthetic data
+    demo_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # account that can never leave demo mode
     access_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # guests only
     auth_code_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # code used at sign-up
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -75,7 +77,7 @@ class User(Base):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id, "email": self.email, "name": self.name, "role": self.role, "is_superuser": self.is_superuser,
+            "id": self.id, "email": self.email, "name": self.name, "role": self.role, "is_superuser": self.is_superuser, "demo_mode": self.demo_mode or self.demo_only, "demo_only": self.demo_only,
             "requested_role": self.requested_role, "status": self.status,
             "must_change_password": self.must_change_password,
             "email_verified_at": self.email_verified_at.isoformat() if self.email_verified_at else None,

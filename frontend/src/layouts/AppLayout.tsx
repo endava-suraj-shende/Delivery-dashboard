@@ -70,6 +70,7 @@ export function AppLayout() {
   const loc = useLocation()
   const nav = useNavigate()
   const { user, signOut } = useSession()
+  const inDemo = !!user && (user.role === 'guest' || user.demo_mode)
   const visibleNav = NAV.filter((n) => { const r = rolesFor(n.to); if (r && !(user && r.includes(user.role))) return false; return !SUPERUSER_ROUTES.includes(n.to) || isSuper(user) })
   const isGuest = user?.role === 'guest'
   const canRefresh = isSuper(user) || user?.role === 'dm'
@@ -190,9 +191,12 @@ export function AppLayout() {
             )}
           </div>
         </header>
-        {isGuest && (
+        {inDemo && (
           <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-800 dark:text-amber-200 no-print">
-            <Sparkles className="h-3.5 w-3.5" /> <b>Demo data.</b> You are exploring the dashboards with synthetic people and tickets. Guest access ends {user?.access_expires_at ? new Date(user.access_expires_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : 'soon'}.
+            <Sparkles className="h-3.5 w-3.5" /> <b>Demo data.</b>
+            {isGuest
+              ? <>You are exploring the dashboards with synthetic people and tickets. Guest access ends {user?.access_expires_at ? new Date(user.access_expires_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : 'soon'}.</>
+              : <>Dashboards, boards, users and codes are synthetic. This account always shows demo data.</>}
           </div>
         )}
         <main key={loc.pathname} className="flex-1 overflow-y-auto p-4 md:p-6 print-full">

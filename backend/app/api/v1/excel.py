@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
 
 from app.api.auth_deps import active_user, workspace
+from app.api.auth_deps import workspace as _ws, workspace_db
 from app.api.deps import container, loaded_container
 from app.core.exceptions import NotFoundError
 from app.db.base import get_db
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/excel", tags=["Excel Management"])
 
 
 def _owners(c: Container) -> Dict[str, str]:
-    return dict(c.upload_owners.read() or {}) if hasattr(c, "upload_owners") else {}
+    return dict(c.upload_owners.read() or {}) if getattr(c, "upload_owners", None) is not None else {}
 
 
 def _visible_files(c: Container, user: User) -> List[Dict[str, Any]]:
@@ -106,7 +107,7 @@ def _employee_status(c: Container, user: User, db: Session) -> Dict[str, Any]:
 
 
 @router.get("/status")
-async def status(c: Container = Depends(workspace), user: User = Depends(active_user), db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def status(c: Container = Depends(workspace), user: User = Depends(active_user), db: Session = Depends(workspace_db)) -> Dict[str, Any]:
     if user.role == ROLE_EMPLOYEE:
         return _employee_status(c, user, db)
     if not c.store.is_loaded:
@@ -118,7 +119,7 @@ async def status(c: Container = Depends(workspace), user: User = Depends(active_
 
 
 @router.post("/refresh")
-async def refresh(force: bool = Query(True), c: Container = Depends(container)) -> Dict[str, Any]:
+async def refresh(force: bool = Query(True), c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.data.load_all(force=force, reason="manual refresh")
 
 
@@ -132,23 +133,23 @@ data_router = APIRouter(prefix="/data", tags=["Data Source"])
 
 
 @data_router.get("/source")
-async def get_source(c: Container = Depends(container)) -> Dict[str, Any]:
+async def get_source(c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.data.status()
 
 
 @data_router.put("/source")
-async def put_source(body: DataSourceUpdate, c: Container = Depends(container)) -> Dict[str, Any]:
+async def put_source(body: DataSourceUpdate, c: Container = Depends(_ws)) -> Dict[str, Any]:
     c.data.update_config(body.mode, body.lookback_days, body.refresh_minutes)
     return c.data.load_all(force=True, reason=f"data source changed to {c.data.mode}")
 
 
 @data_router.post("/reload")
-async def reload(c: Container = Depends(container)) -> Dict[str, Any]:
+async def reload(c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.data.load_all(force=True, reason="manual reload")
 
 
 @router.get("/files")
-async def files(c: Container = Depends(loaded_container), user: User = Depends(active_user), db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def files(c: Container = Depends(loaded_container), user: User = Depends(active_user), db: Session = Depends(workspace_db)) -> Dict[str, Any]:
     items = _visible_files(c, user)
     return {"items": items, "status": _employee_status(c, user, db) if user.role == ROLE_EMPLOYEE else c.excel.status()}
 
@@ -183,15 +184,15 @@ async def validate(body: ValidateRequest, c: Container = Depends(loaded_containe
 
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...), replace: bool = Query(False), c: Container = Depends(container),
-                 user: User = Depends(active_user), db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def upload(file: UploadFile = File(...), replace: bool = Query(False), c: Container = Depends(_ws),
+                 user: User = Depends(active_user), db: Session = Depends(workspace_db)) -> Dict[str, Any]:
     content = await file.read()
     result = c.excel.save_upload(file.filename or "upload.xlsx", content, replace=replace)
-    if hasattr(c, "upload_owners") and result.get("file_name"):
+    if getattr(c, "upload_owners", None) is not None and result.get("file_name"):
         owners = _owners(c)
         owners[result["file_name"]] = user.id
         c.upload_owners.write(owners)
-    if hasattr(c, "upload_owners"):
+    if getattr(c, "upload_owners", None) is not None:
         rec = _persist_upload(c, db, user, result)
         db.commit()
         result["upload_id"] = rec.id if rec else None
@@ -213,12 +214,12 @@ async def remove_upload(file_id: str, c: Container = Depends(loaded_container)) 
 
 
 @router.delete("/uploads")
-async def clear_uploads(c: Container = Depends(container)) -> Dict[str, Any]:
+async def clear_uploads(c: Container = Depends(_ws)) -> Dict[str, Any]:
     return c.excel.clear_uploads()
 
 
 @router.get("/my")
-async def my_uploads(user: User = Depends(active_user), db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def my_uploads(user: User = Depends(active_user), db: Session = Depends(workspace_db)) -> Dict[str, Any]:
     """The caller's own uploaded workbooks and every ticket row read from them (stored in the database)."""
     ups = db.execute(select(ExcelUpload).where(ExcelUpload.user_id == user.id).order_by(ExcelUpload.uploaded_at.desc())).scalars().all()
     rows = db.execute(select(ExcelUploadRow).where(ExcelUploadRow.user_id == user.id).order_by(ExcelUploadRow.report_date.desc(), ExcelUploadRow.source_row)).scalars().all()
@@ -228,7 +229,7 @@ async def my_uploads(user: User = Depends(active_user), db: Session = Depends(ge
 
 
 @router.get("/history")
-async def history(c: Container = Depends(container), user: User = Depends(active_user)) -> Dict[str, Any]:
+async def history(c: Container = Depends(_ws), user: User = Depends(active_user)) -> Dict[str, Any]:
     items = c.excel.history()
     if user.role == ROLE_EMPLOYEE:
         mine = {f["file_name"] for f in _visible_files(c, user)}
