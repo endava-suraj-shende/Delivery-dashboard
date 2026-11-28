@@ -4,24 +4,18 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3,
   Users,
-  UsersRound,
   FolderKanban,
   Ticket,
   Rocket,
-  ServerCog,
   FileOutput,
   FileSpreadsheet,
-  SlidersHorizontal,
-  Settings,
   Menu,
   Moon,
   Sun,
   RefreshCw,
   ChevronLeft,
-  GitCompareArrows,
   Database,
   Plug,
-  Zap,
   LogOut,
   UserCog,
   Sparkles,
@@ -41,23 +35,25 @@ import { ROLE_LABEL } from '@/services/authApi'
 import { excelApi, errorMessage } from '@/services/api'
 import { cn, fmtDate } from '@/lib/utils'
 
-const NAV = [
-  { to: '/', label: 'Executive Dashboard', icon: BarChart3, end: true },
-  { to: '/employees', label: 'Employee Performance', icon: Users },
-  { to: '/team', label: 'Team Performance', icon: UsersRound },
-  { to: '/sprints', label: 'Sprint Performance', icon: Zap },
-  { to: '/projects', label: 'Project Analytics', icon: FolderKanban },
-  { to: '/jira', label: 'Jira Analytics', icon: Ticket },
-  { to: '/deployments/dev', label: 'Dev Deployment', icon: ServerCog },
-  { to: '/deployments/production', label: 'Production Releases', icon: Rocket },
-  { to: '/compare', label: 'Period Comparison', icon: GitCompareArrows },
-  { to: '/reports', label: 'Report Center', icon: FileOutput },
-  { to: '/excel', label: 'Excel Data Management', icon: FileSpreadsheet },
-  { to: '/config/status', label: 'Status Configuration', icon: SlidersHorizontal },
-  { to: '/config/jira', label: 'Jira Connections', icon: Plug },
-  { to: '/settings', label: 'Application Settings', icon: Settings },
-  { to: '/admin/users', label: 'User Management', icon: UserCog },
+type NavItem = { to: string; label: string; icon: typeof BarChart3; end?: boolean; children?: { to: string; label: string; end?: boolean }[] }
+
+/** Seven destinations (eight for superusers). Every former page keeps its route and appears as a child of its group. */
+const NAV: NavItem[] = [
+  { to: '/', label: 'Overview', icon: BarChart3, end: true, children: [{ to: '/', label: 'Executive dashboard', end: true }, { to: '/compare', label: 'Period comparison' }] },
+  { to: '/employees', label: 'People', icon: Users },
+  { to: '/projects', label: 'Delivery', icon: FolderKanban, children: [{ to: '/projects', label: 'Projects' }, { to: '/team', label: 'Team' }, { to: '/sprints', label: 'Sprints' }] },
+  { to: '/deployments/dev', label: 'Releases', icon: Rocket, children: [{ to: '/deployments/dev', label: 'Dev deployments' }, { to: '/deployments/production', label: 'Production releases' }] },
+  { to: '/jira', label: 'Tickets', icon: Ticket },
+  { to: '/reports', label: 'Reports', icon: FileOutput },
+  { to: '/excel', label: 'Data', icon: Database, children: [{ to: '/excel', label: 'Excel workbooks' }, { to: '/config/jira', label: 'Jira connections' }] },
+  { to: '/admin/users', label: 'Administration', icon: UserCog, children: [{ to: '/admin/users', label: 'Users & access' }, { to: '/settings', label: 'Application settings' }, { to: '/config/status', label: 'Status configuration' }] },
 ]
+
+const GROUP_PATHS: Record<string, string[]> = Object.fromEntries(NAV.map((n) => [n.to, (n.children ?? [{ to: n.to }]).map((c) => c.to)]))
+
+function groupActive(group: NavItem, pathname: string): boolean {
+  return (GROUP_PATHS[group.to] ?? [group.to]).some((p) => (p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(p + '/')))
+}
 
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -71,7 +67,10 @@ export function AppLayout() {
   const nav = useNavigate()
   const { user, signOut } = useSession()
   const inDemo = !!user && (user.role === 'guest' || user.demo_mode)
-  const visibleNav = NAV.filter((n) => { const r = rolesFor(n.to); if (r && !(user && r.includes(user.role))) return false; return !SUPERUSER_ROUTES.includes(n.to) || isSuper(user) })
+  const allowed = (to: string) => { const r = rolesFor(to); if (r && !(user && r.includes(user.role))) return false; return !SUPERUSER_ROUTES.includes(to) || isSuper(user) }
+  const visibleNav = NAV.map((n) => ({ ...n, children: n.children?.filter((c) => allowed(c.to)) }))
+    .filter((n) => (n.children ? n.children.length > 0 : allowed(n.to)))
+    .map((n) => (n.children && !allowed(n.to) ? { ...n, to: n.children[0].to, end: n.children[0].end } : n))
   const isGuest = user?.role === 'guest'
   const canRefresh = isSuper(user) || user?.role === 'dm'
 
@@ -97,29 +96,39 @@ export function AppLayout() {
           </div>
         )}
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Main">
         {visibleNav.map((n) => {
           const Icon = n.icon
+          const active = groupActive(n, loc.pathname)
+          const showChildren = !collapsed && active && (n.children?.length ?? 0) > 1
           const link = (
             <NavLink
               key={n.to}
               to={withQuery(n.to)}
-              end={n.end}
+              end={n.end && !n.children}
               onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                cn('flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent', isActive && 'bg-primary/90 text-primary-foreground hover:bg-primary', collapsed && 'justify-center px-2')
-              }
+              aria-current={active ? 'page' : undefined}
+              className={cn('flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent',
+                active && 'bg-primary/90 text-primary-foreground hover:bg-primary', collapsed && 'justify-center px-2')}
             >
               <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="truncate">{n.label}</span>}
             </NavLink>
           )
-          return collapsed ? (
-            <HelpTip key={n.to} text={n.label}>
-              {link}
-            </HelpTip>
-          ) : (
-            link
+          return (
+            <div key={n.to}>
+              {collapsed ? <HelpTip text={n.children && n.children.length > 1 ? `${n.label}: ${n.children.map((c) => c.label).join(', ')}` : n.label}>{link}</HelpTip> : link}
+              {showChildren && (
+                <div className="ml-4 mt-0.5 space-y-0.5 border-l border-white/10 pl-3">
+                  {n.children!.map((c) => (
+                    <NavLink key={c.to} to={withQuery(c.to)} end={c.end ?? c.to !== '/'} onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) => cn('block truncate rounded-md px-2 py-1.5 text-[13px] text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground', isActive && 'bg-white/10 font-medium text-sidebar-foreground')}>
+                      {c.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
           )
         })}
       </nav>

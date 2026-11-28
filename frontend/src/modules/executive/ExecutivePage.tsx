@@ -25,6 +25,7 @@ export default function ExecutivePage() {
   const [ticket, setTicket] = useState<string | null>(null)
   const [empView, setEmpView] = useState<'table' | 'chart'>('table')
   const [openView, setOpenView] = useState<'table' | 'chart'>('table')
+  const [moreKpis, setMoreKpis] = useState(false)
   const qs = queryString ? `?${queryString}` : ''
 
   const goEmployee = (name: string) => nav(`/employees/${encodeURIComponent(name)}${qs}`)
@@ -48,29 +49,41 @@ export default function ExecutivePage() {
               </CardContent>
             </Card>
           )}
+          {/* Primary question first: how much is done, what is stuck, what reached production. Secondary metrics on demand. */}
           <KpiGrid cols={5}>
-            <KpiCard label="Team members" value={q.data.kpis.total_employees} icon={<Users className="h-4 w-4" />} tone="grey" hint="Distinct employees across all loaded workbooks (not date-filtered)." />
-            <KpiCard label="Active in period" value={q.data.kpis.active_employees} icon={<UserCheck className="h-4 w-4" />} tone="blue" previous={q.data.previous_kpis?.active_employees} hint="Employees with at least one report in the selected period." onClick={() => nav(`/team${qs}`)} />
-            <KpiCard label="Unique Jira tickets" value={q.data.kpis.total_tickets} icon={<Ticket className="h-4 w-4" />} tone="blue" previous={q.data.previous_kpis?.total_tickets} hint="Distinct Jira ids referenced in the period (each counted once)." onClick={() => nav(`/jira${qs}`)} />
-            <KpiCard label="Completed" value={q.data.kpis.completed_tickets} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" previous={q.data.previous_kpis?.completed_tickets} hint="Tickets whose latest status is Completed or Deployed." onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />
+            <KpiCard label="Completed" value={q.data.kpis.completed_tickets} sub={`of ${q.data.kpis.total_tickets} tickets`} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" previous={q.data.previous_kpis?.completed_tickets} hint="Tickets whose latest status is Completed or Deployed." onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />
             <KpiCard label="In progress" value={q.data.kpis.in_progress_tickets} icon={<Activity className="h-4 w-4" />} tone="blue" previous={q.data.previous_kpis?.in_progress_tickets} onClick={() => toggleValue('status', 'in_progress')} active={filters.status.includes('in_progress')} />
-            <KpiCard label="Pending / on hold" value={q.data.kpis.pending_tickets} icon={<Hourglass className="h-4 w-4" />} tone="orange" previous={q.data.previous_kpis?.pending_tickets} onClick={() => setList('status', ['pending', 'on_hold'])} />
-            <KpiCard label="Blocked" value={q.data.kpis.blocked_tickets} icon={<AlertOctagon className="h-4 w-4" />} tone="red" previous={q.data.previous_kpis?.blocked_tickets} onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
-            <KpiCard label="Dev deployments" value={q.data.kpis.dev_deployed} sub={`${q.data.kpis.dev_pending} pending`} icon={<ServerCog className="h-4 w-4" />} tone="teal" previous={q.data.previous_kpis?.dev_deployed} onClick={() => nav(`/deployments/dev${qs}`)} />
+            <KpiCard label="Blocked" value={q.data.kpis.blocked_tickets} sub={`${q.data.kpis.pending_tickets} pending / on hold`} icon={<AlertOctagon className="h-4 w-4" />} tone="red" previous={q.data.previous_kpis?.blocked_tickets} onClick={() => toggleValue('status', 'blocked')} active={filters.status.includes('blocked')} />
             <KpiCard label="Production releases" value={q.data.kpis.production_releases} sub={`${q.data.kpis.production_released} deployed | ${q.data.kpis.production_pending} pending`} icon={<Rocket className="h-4 w-4" />} tone="purple" previous={q.data.previous_kpis?.production_releases} onClick={() => nav(`/deployments/production${qs}`)} />
-            <KpiCard label="Prod success rate" value={q.data.kpis.production_success_rate} suffix="%" icon={<Clock className="h-4 w-4" />} tone="green" hint="Released / production release records in period." />
-            {q.data.jira && (
-              <KpiCard
-                label="Excel vs Jira"
-                value={q.data.jira.errors + q.data.jira.warnings}
-                sub={`${q.data.jira.matched}/${q.data.jira.compared} match | ${q.data.jira.not_found} not found | ${q.data.jira.missing_from_excel} missing in sheets`}
-                icon={<Plug className="h-4 w-4" />}
-                tone={q.data.jira.errors ? 'red' : q.data.jira.warnings ? 'orange' : 'green'}
-                hint={`Discrepancies between the bi-weekly sheets and live Jira. Last sync ${q.data.jira.last_sync ? new Date(q.data.jira.last_sync).toLocaleString() : 'never'}.`}
-                onClick={() => nav(`/jira?tab=live${queryString ? `&${queryString}` : ''}`)}
-              />
-            )}
+            <KpiCard label="Active people" value={q.data.kpis.active_employees} sub={`of ${q.data.kpis.total_employees} team members`} icon={<UserCheck className="h-4 w-4" />} tone="grey" previous={q.data.previous_kpis?.active_employees} hint="Employees with at least one report in the selected period." onClick={() => nav(`/employees${qs}`)} />
           </KpiGrid>
+          <div className="-mt-2 flex justify-end">
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => setMoreKpis((v) => !v)} aria-expanded={moreKpis}>
+              {moreKpis ? 'Hide secondary metrics' : 'More metrics'}
+            </Button>
+          </div>
+          {moreKpis && (
+            <KpiGrid cols={5}>
+              <KpiCard label="Unique Jira tickets" value={q.data.kpis.total_tickets} icon={<Ticket className="h-4 w-4" />} tone="blue" previous={q.data.previous_kpis?.total_tickets} hint="Distinct Jira ids referenced in the period (each counted once)." onClick={() => nav(`/jira${qs}`)} compact />
+              <KpiCard label="Pending / on hold" value={q.data.kpis.pending_tickets} icon={<Hourglass className="h-4 w-4" />} tone="orange" previous={q.data.previous_kpis?.pending_tickets} onClick={() => setList('status', ['pending', 'on_hold'])} compact />
+              <KpiCard label="Dev deployments" value={q.data.kpis.dev_deployed} sub={`${q.data.kpis.dev_pending} pending`} icon={<ServerCog className="h-4 w-4" />} tone="teal" previous={q.data.previous_kpis?.dev_deployed} onClick={() => nav(`/deployments/dev${qs}`)} compact />
+              <KpiCard label="Prod success rate" value={q.data.kpis.production_success_rate} suffix="%" icon={<Clock className="h-4 w-4" />} tone="green" hint="Released / production release records in period." compact />
+              {q.data.jira ? (
+                <KpiCard
+                  label="Excel vs Jira"
+                  value={q.data.jira.errors + q.data.jira.warnings}
+                  sub={`${q.data.jira.matched}/${q.data.jira.compared} match | ${q.data.jira.not_found} not found`}
+                  icon={<Plug className="h-4 w-4" />}
+                  tone={q.data.jira.errors ? 'red' : q.data.jira.warnings ? 'orange' : 'green'}
+                  hint={`Discrepancies between the bi-weekly sheets and live Jira. Last sync ${q.data.jira.last_sync ? new Date(q.data.jira.last_sync).toLocaleString() : 'never'}.`}
+                  onClick={() => nav(`/jira?tab=live${queryString ? `&${queryString}` : ''}`)}
+                  compact
+                />
+              ) : (
+                <KpiCard label="Team members" value={q.data.kpis.total_employees} icon={<Users className="h-4 w-4" />} tone="grey" hint="Distinct employees across all loaded data (not date-filtered)." compact />
+              )}
+            </KpiGrid>
+          )}
 
           <NarrativeCard />
 
