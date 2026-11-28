@@ -39,7 +39,7 @@ type NavItem = { to: string; label: string; icon: typeof BarChart3; end?: boolea
 
 /** Seven destinations (eight for superusers). Every former page keeps its route and appears as a child of its group. */
 const NAV: NavItem[] = [
-  { to: '/', label: 'Overview', icon: BarChart3, end: true, children: [{ to: '/', label: 'Executive dashboard', end: true }, { to: '/intelligence', label: 'AI insights' }, { to: '/compare', label: 'Period comparison' }] },
+  { to: '/', label: 'Overview', icon: BarChart3, end: true, children: [{ to: '/', label: 'Executive dashboard', end: true }, { to: '/intelligence', label: 'AI Insights' }, { to: '/compare', label: 'Period comparison' }] },
   { to: '/employees', label: 'People', icon: Users },
   { to: '/projects', label: 'Delivery', icon: FolderKanban, children: [{ to: '/projects', label: 'Projects' }, { to: '/team', label: 'Team' }, { to: '/sprints', label: 'Sprints' }] },
   { to: '/deployments/dev', label: 'Releases', icon: Rocket, children: [{ to: '/deployments/dev', label: 'Dev deployments' }, { to: '/deployments/production', label: 'Production releases' }] },

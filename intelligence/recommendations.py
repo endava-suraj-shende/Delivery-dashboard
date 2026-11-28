@@ -13,6 +13,11 @@ from app.services.analytics_service import AnalyticsEngine
 from app.services.filter_service import Filters
 
 
+
+def _n(count: int, noun: str) -> str:
+    """'1 ticket' / '3 tickets'."""
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
 class RecommendationService:
     def __init__(self, engine: AnalyticsEngine, risk: RiskService) -> None:
         self.engine = engine
@@ -41,7 +46,7 @@ class RecommendationService:
         # 2. Unblock: tickets blocked longest
         blocked = sorted([t for t in items if t["days_blocked"] > 0], key=lambda t: -t["days_blocked"])[:5]
         if blocked:
-            recs.append({"kind": "unblock", "priority": 1, "title": f"Escalate {len(blocked)} long-blocked ticket(s)",
+            recs.append({"kind": "unblock", "priority": 1, "title": f"Escalate {_n(len(blocked), 'long-blocked ticket')}",
                          "detail": "; ".join(f"{t['ticket_id']} blocked {t['days_blocked']} days" for t in blocked),
                          "evidence": [f"{t['ticket_id']} - {t['employee'] or 'unassigned'}" for t in blocked],
                          "effect": "blocked age is the strongest slip predictor in this data" if self.risk.model.trained else "blocked time dominates the heuristic score",
@@ -68,14 +73,14 @@ class RecommendationService:
         soon = [t for t in items if t["due_date"] and not t["overdue"] and t["band"] in ("high", "medium")]
         soon = sorted(soon, key=lambda t: t["due_date"])[:5]
         if soon:
-            recs.append({"kind": "due", "priority": 2, "title": f"{len(soon)} due-soon ticket(s) are at risk",
+            recs.append({"kind": "due", "priority": 2, "title": f"{_n(len(soon), 'ticket')} due within days {'is' if len(soon) == 1 else 'are'} at risk",
                          "detail": "; ".join(f"{t['ticket_id']} due {t['due_date']} ({int(t['risk'] * 100)}%)" for t in soon),
                          "evidence": [], "effect": "re-plan or communicate before the date passes", "tickets": [t["ticket_id"] for t in soon]})
 
         # 5. Hygiene: unassigned open work
         unassigned = [t for t in items if not t["employee"] or t["employee"] == "Unassigned"]
         if unassigned:
-            recs.append({"kind": "hygiene", "priority": 3, "title": f"Assign {len(unassigned)} unassigned open ticket(s)",
+            recs.append({"kind": "hygiene", "priority": 3, "title": f"Assign {_n(len(unassigned), 'unassigned open ticket')}",
                          "detail": ", ".join(t["ticket_id"] for t in unassigned[:8]) + (" ..." if len(unassigned) > 8 else ""),
                          "evidence": [], "effect": "unassigned work never shows in anyone's plan", "tickets": [t["ticket_id"] for t in unassigned[:20]]})
 
