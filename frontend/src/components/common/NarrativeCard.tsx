@@ -1,18 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { AlertOctagon, AlertTriangle, ArrowDownRight, ArrowUpRight, Check, Copy, Flag, Info, ListChecks, Minus, Rocket, Sparkles, Users, Workflow } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Check, Copy, Flag, Info, ListChecks, Minus, Rocket, Sparkles, Users, Workflow } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useNarrative } from '@/hooks/useData'
-import { useFilters } from '@/hooks/useFilters'
-import type { Narrative, NarrativeFlag } from '@/services/api'
+import { WatchList } from '@/components/common/WatchList'
+import type { Narrative } from '@/services/api'
 import { cn } from '@/lib/utils'
 
-const SEV: Record<NarrativeFlag['severity'], { icon: typeof Info; cls: string }> = {
-  danger: { icon: AlertOctagon, cls: 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200' },
-  warning: { icon: AlertTriangle, cls: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200' },
-  info: { icon: Info, cls: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200' },
-}
 
 type Kind = Narrative['paragraphs'][number]['kind']
 const SECTION: Record<Exclude<Kind, 'headline'>, { label: string; icon: typeof Info; tone: string }> = {
@@ -63,21 +57,11 @@ function Fact({ label, value, prev, invert, suffix }: { label: string; value: nu
  */
 export function NarrativeCard({ employee, className }: { employee?: string; className?: string }) {
   const q = useNarrative(employee)
-  const nav = useNavigate()
-  const { queryString, setList } = useFilters()
   const [copied, setCopied] = useState(false)
-  const qs = queryString ? `?${queryString}` : ''
 
   const text = q.data ? q.data.paragraphs.map((p) => p.text).join('\n\n') : ''
   const copy = async () => {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* clipboard unavailable */ }
-  }
-  const follow = (f: NarrativeFlag) => {
-    if (!f.link) return
-    if (f.link.type === 'employee') nav(`/employees/${encodeURIComponent(f.link.value)}${qs}`)
-    else if (f.link.type === 'ticket') nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(f.link.value)}`)
-    else if (f.link.type === 'config') nav('/config/status')
-    else if (f.link.type === 'project') nav(`/projects/${encodeURIComponent(f.link.value)}${qs}`)
   }
 
   const d = q.data
@@ -144,17 +128,9 @@ export function NarrativeCard({ employee, className }: { employee?: string; clas
             )}
 
             {d.flags.length > 0 ? (
-              <div className="flex flex-wrap gap-2" aria-label="Anomaly flags">
-                {d.flags.map((f, i) => {
-                  const { icon: Icon, cls } = SEV[f.severity]
-                  const clickable = !!f.link || f.code.startsWith('blocked')
-                  return (
-                    <button key={i} type="button" onClick={() => (f.link ? follow(f) : f.code.startsWith('blocked') ? setList('status', ['blocked']) : undefined)}
-                      className={cn('inline-flex max-w-full items-start gap-1.5 rounded-md border px-2 py-1 text-left text-xs transition-colors', cls, clickable && 'cursor-pointer hover:brightness-95')} title={clickable ? 'Open' : undefined}>
-                      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> <span>{f.text}</span>
-                    </button>
-                  )
-                })}
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Flag className="h-3.5 w-3.5 text-amber-600" aria-hidden /> Watch list</p>
+                <WatchList flags={d.flags} />
               </div>
             ) : hasWork ? <p className="text-xs text-muted-foreground">No anomalies detected for this scope.</p> : null}
           </>

@@ -153,7 +153,7 @@ export interface FileDetail {
   kt_items: Record<string, unknown>[]
 }
 
-export interface NarrativeFlag { code: string; severity: 'danger' | 'warning' | 'info'; text: string; value: number | string | null; link: { type: string; value: string } | null }
+export interface NarrativeFlag { code: string; severity: 'danger' | 'warning' | 'info'; text: string; value: number | string | null; link: { type: string; value: string } | null; data?: Record<string, unknown> }
 export interface Narrative {
   period: { label: string }
   scope: string

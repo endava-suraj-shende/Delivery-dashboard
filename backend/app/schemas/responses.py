@@ -175,6 +175,7 @@ class NarrativeFlag(BaseModel):
     text: str
     value: Any = None
     link: Optional[Dict[str, str]] = None
+    data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class NarrativeParagraph(BaseModel):

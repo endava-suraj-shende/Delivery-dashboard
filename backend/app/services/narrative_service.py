@@ -162,8 +162,8 @@ class NarrativeService:
         flags: List[Dict[str, Any]] = []
         today = pd.Timestamp(f.end_date or date.today())
 
-        def add(code: str, severity: str, text: str, value: Any = None, link: Optional[Dict[str, str]] = None) -> None:
-            flags.append({"code": code, "severity": severity, "text": text, "value": value, "link": link})
+        def add(code: str, severity: str, text: str, value: Any = None, link: Optional[Dict[str, str]] = None, data: Optional[Dict[str, Any]] = None) -> None:
+            flags.append({"code": code, "severity": severity, "text": text, "value": value, "link": link, "data": data or {}})
 
         if len(tickets):
             t = tickets
@@ -176,22 +176,24 @@ class NarrativeService:
                     worst = old.assign(age=age[age >= BLOCKED_AGE_DAYS]).sort_values("age", ascending=False).iloc[0]
                     add("blocked_age", "danger",
                         f"{len(old)} ticket(s) blocked for {BLOCKED_AGE_DAYS}+ days, longest {worst['ticket_id']} ({int(worst['age'])} days, {worst.get('employee') or 'unassigned'}).",
-                        int(len(old)), {"type": "ticket", "value": str(worst["ticket_id"])})
+                        int(len(old)), {"type": "ticket", "value": str(worst["ticket_id"])},
+                        {"count": int(len(old)), "ticket": str(worst["ticket_id"]), "days": int(worst["age"]), "employee": worst.get("employee") or None, "threshold": BLOCKED_AGE_DAYS})
             remaining = t[t.get("is_remaining", pd.Series(False, index=t.index)) == True] if "is_remaining" in t.columns else t.iloc[0:0]  # noqa: E712
             if len(remaining) and "last_seen" in remaining.columns:
                 last = pd.to_datetime(remaining["last_seen"], errors="coerce")
                 stale = remaining[(today - last).dt.days >= STALE_DAYS]
                 if len(stale):
                     add("stale", "warning", f"{len(stale)} open ticket(s) have not changed in {STALE_DAYS}+ days ({_join(list(stale['ticket_id'].astype(str)), 3)}).",
-                        int(len(stale)))
+                        int(len(stale)), None, {"count": int(len(stale)), "tickets": list(stale["ticket_id"].astype(str))[:8], "threshold": STALE_DAYS})
             if "overdue" in t.columns:
                 overdue = t[t["overdue"] == True]  # noqa: E712
                 if len(overdue):
-                    add("overdue", "warning", f"{len(overdue)} ticket(s) are past their due date.", int(len(overdue)))
+                    add("overdue", "warning", f"{len(overdue)} ticket(s) are past their due date.", int(len(overdue)), None,
+                        {"count": int(len(overdue)), "tickets": list(overdue.sort_values("due_date")["ticket_id"].astype(str))[:8] if "due_date" in overdue.columns else []})
         # carry-over
         carry = self._carry_pct(employees)
         if carry is not None and carry >= int(CARRY_OVER_WARN * 100) and sum(e.get("unique_tickets", 0) for e in employees) >= 10:
-            add("carry_over", "warning", f"{carry}% of tickets were carried over from before the period - scope is rolling rather than closing.", carry)
+            add("carry_over", "warning", f"{carry}% of tickets were carried over from before the period - scope is rolling rather than closing.", carry, None, {"pct": carry})
         # workload distribution (team-level only)
         if len(team) >= 4:
             loads = [e["in_progress"] + e["pending"] + e["blocked"] for e in team]
@@ -201,7 +203,7 @@ class NarrativeService:
                 load = e["in_progress"] + e["pending"] + e["blocked"]
                 if avg >= 3 and load >= OVERLOAD_FACTOR * avg and (sd == 0 or (load - avg) / sd >= 1.5):
                     add("overloaded", "warning", f"{e['employee']} carries {load} open tickets vs a team average of {avg:.0f}.",
-                        load, {"type": "employee", "value": e["employee"]})
+                        load, {"type": "employee", "value": e["employee"]}, {"employee": e["employee"], "load": int(load), "average": round(avg, 1)})
             # throughput drop vs own completion share
             shares = [e["completed_pct"] for e in team if e.get("completed_pct") is not None and e.get("unique_tickets", 0) >= 5]
             if len(shares) >= 4:
@@ -209,19 +211,19 @@ class NarrativeService:
                 for e in team:
                     if e.get("completed_pct") is not None and e.get("unique_tickets", 0) >= 5 and sd_s > 0 and (avg_s - e["completed_pct"]) / sd_s >= 1.5:
                         add("low_completion", "info", f"{e['employee']} completed {int(e['completed_pct'])}% of their tickets vs a team average of {avg_s:.0f}%.",
-                            e["completed_pct"], {"type": "employee", "value": e["employee"]})
+                            e["completed_pct"], {"type": "employee", "value": e["employee"]}, {"employee": e["employee"], "pct": int(e["completed_pct"]), "average": round(avg_s, 1)})
         # period deltas
         if prev:
             if prev["completed_tickets"] >= 5 and k["completed_tickets"] <= prev["completed_tickets"] * 0.6:
                 add("throughput_drop", "warning",
                     f"Completed tickets fell from {prev['completed_tickets']} to {k['completed_tickets']} compared with the previous period.",
-                    k["completed_tickets"] - prev["completed_tickets"])
+                    k["completed_tickets"] - prev["completed_tickets"], None, {"previous": prev["completed_tickets"], "current": k["completed_tickets"]})
             if k["blocked_tickets"] >= prev["blocked_tickets"] + 3:
                 add("blocked_rising", "danger", f"Blocked tickets rose from {prev['blocked_tickets']} to {k['blocked_tickets']}.",
-                    k["blocked_tickets"] - prev["blocked_tickets"])
+                    k["blocked_tickets"] - prev["blocked_tickets"], None, {"previous": prev["blocked_tickets"], "current": k["blocked_tickets"]})
         if k.get("other_status_tickets"):
             add("unmapped", "info", f"{k['other_status_tickets']} ticket(s) have a Jira status that is not mapped yet.", k["other_status_tickets"],
-                {"type": "config", "value": "status"})
+                {"type": "config", "value": "status"}, {"count": k["other_status_tickets"]})
         order = {"danger": 0, "warning": 1, "info": 2}
         flags.sort(key=lambda x: order.get(x["severity"], 9))
         return flags
