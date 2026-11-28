@@ -42,6 +42,8 @@ class Container:
         self.secrets = SecretBox(settings.secret_key_path)
         self.email = EmailService(settings)
         self.auth = AuthService(settings, self.email, settings.auth_secret or self._derived_auth_secret(), box=self.secrets)
+        from app.services.sso_service import SsoService
+        self.sso = SsoService(settings, self.auth, settings.auth_secret or self._derived_auth_secret())
 
         self.normalizer = StatusNormalizer(settings.status_config_path, store=store("status_mapping", settings.status_config_path))
         self.store = InMemoryDataStore(self.normalizer)

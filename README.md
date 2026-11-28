@@ -332,6 +332,14 @@ flowchart LR
 
 Sign-up is limited to allowed domains (`EDD_DEFAULT_ALLOWED_DOMAINS`, default `endava.com`); the superuser can add domains or individual addresses in *User Management → Registration*.
 
+### Single sign-on (Microsoft Entra ID / any OIDC provider)
+
+Set `EDD_SSO_ISSUER`, `EDD_SSO_CLIENT_ID` and `EDD_SSO_CLIENT_SECRET` (see `.env.example`) and the sign-in dialog shows
+**Sign in with Microsoft**. Flow: authorization code + PKCE, state/nonce bound to a short-lived signed cookie, id_token verified
+against the provider's JWKS. Users are matched by e-mail: existing accounts keep their role; first-time users from an allow-listed
+domain are created as `EDD_SSO_DEFAULT_ROLE` (active immediately, or pending approval with `EDD_SSO_AUTO_ACTIVATE=0`).
+SSO accounts have no usable password; local passwords remain for guests, demo accounts and break-glass admins.
+
 ### Perimeter hardening (on by default)
 
 * **CSRF**: every state-changing `/api` request with a cookie session must carry an `Origin`/`Referer` from an allowed origin
@@ -416,7 +424,7 @@ All endpoints live under `/api/v1` and are documented interactively at `/docs`. 
 
 | Group | Endpoints | Who |
 |---|---|---|
-| `auth` | `options`, `signup`, `verify-email`, `login`, `logout`, `me`, `forgot-password`, `reset-password`, `change-password` | public / signed-in |
+| `auth` | `options`, `signup`, `verify-email`, `login`, `sso/login`, `sso/callback`, `logout`, `me`, `forgot-password`, `reset-password`, `change-password` | public / signed-in |
 | `admin` | `users`, `users/{id}` (role, status, superuser, temp password, extend), `codes`, `boards/{id}/regenerate-code`, `users/{id}/boards`, `rules`, `audit` | superuser |
 | `excel` | `status`, `refresh`, `files`, `sheets`, `preview`, `validate`, `upload`, `uploads`, `history`, `my` | role-dependent |
 | `dashboard` | `executive`, `team`, `employee`, `project`, `activities`, `compare`, `data-quality` | viewers |

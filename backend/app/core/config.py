@@ -78,6 +78,18 @@ class Settings(BaseSettings):
     cookie_secure: bool | None = None
     # Serve the built frontend (frontend/dist) from the API process - used by the Docker image. Blank = disabled.
     static_dir: Path | None = None
+    # Single sign-on (OpenID Connect; Microsoft Entra ID by default). Enabled when issuer + client id + secret are set.
+    # Entra: EDD_SSO_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+    sso_issuer: str = ""
+    sso_client_id: str = ""
+    sso_client_secret: str = ""
+    sso_label: str = "Microsoft"
+    sso_scopes: str = "openid profile email"
+    sso_redirect_uri: str = ""            # default: <EDD_PUBLIC_URL>/api/v1/auth/sso/callback
+    sso_domain_hint: str = ""             # e.g. endava.com - skips the account picker
+    sso_default_role: str = "employee"    # role for first-time SSO users (superuser can change it later)
+    sso_auto_activate: bool = True        # False = new SSO users wait for superuser approval
+    sso_allow_local_login: bool = True    # False = hide e-mail/password form (guests/demo/admins can still POST /auth/login)
     # Perimeter hardening
     csrf_protection: bool = True
     rate_limit_auth_per_minute: int = 10      # per client IP on /auth/login, /auth/signup, /auth/forgot-password

@@ -251,7 +251,9 @@ export default function WelcomePage() {
   const nav = useNavigate()
   const { user, signOut } = useSession()
   const loc = useLocation()
-  const wanted = new URLSearchParams(loc.search).get('auth') ?? (loc.state as { auth?: AuthMode } | null)?.auth
+  const params = new URLSearchParams(loc.search)
+  const ssoError = params.get('sso_error')
+  const wanted = params.get('auth') ?? (loc.state as { auth?: AuthMode } | null)?.auth ?? (ssoError ? 'login' : null)
   const [auth, setAuth] = useState<null | AuthMode>(wanted === 'login' || wanted === 'signup' || wanted === 'forgot' ? wanted : null)
   const [product, setProduct] = useState(false)
 
@@ -344,7 +346,7 @@ export default function WelcomePage() {
         </div>
       </footer>
 
-      <AuthDialog mode={auth ?? 'login'} open={auth !== null} onOpenChange={(o) => !o && setAuth(null)} onSwitch={setAuth} />
+      <AuthDialog mode={auth ?? 'login'} open={auth !== null} onOpenChange={(o) => !o && setAuth(null)} onSwitch={setAuth} initialError={ssoError ? `Single sign-on failed: ${ssoError}` : undefined} />
       <ProductDialog open={product} onOpenChange={setProduct} />
     </div>
   )

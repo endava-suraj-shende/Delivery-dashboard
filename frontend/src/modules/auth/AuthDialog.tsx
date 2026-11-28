@@ -48,7 +48,7 @@ export function PasswordStrength({ value }: { value: string }) {
   )
 }
 
-export function AuthDialog({ mode, open, onOpenChange, onSwitch }: { mode: AuthMode; open: boolean; onOpenChange: (o: boolean) => void; onSwitch: (m: AuthMode) => void }) {
+export function AuthDialog({ mode, open, onOpenChange, onSwitch, initialError }: { mode: AuthMode; open: boolean; onOpenChange: (o: boolean) => void; onSwitch: (m: AuthMode) => void; initialError?: string }) {
   const { signIn, signUp } = useSession()
   const nav = useNavigate()
   const { data: options } = useQuery({ queryKey: ['auth-options'], queryFn: authApi.options, staleTime: 5 * 60_000, enabled: open })
@@ -62,7 +62,7 @@ export function AuthDialog({ mode, open, onOpenChange, onSwitch }: { mode: AuthM
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<{ kind: 'verify' | 'reset' | 'activated'; email: string; debugLink?: string; sent: boolean } | null>(null)
 
-  useEffect(() => { if (open) { setError(null); setPassword(''); setConfirm(''); setDone(null) } }, [open, mode])
+  useEffect(() => { if (open) { setError(initialError ?? null); setPassword(''); setConfirm(''); setDone(null) } }, [open, mode, initialError])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -123,6 +123,21 @@ export function AuthDialog({ mode, open, onOpenChange, onSwitch }: { mode: AuthM
           </div>
         ) : (
           <form className="space-y-3" onSubmit={submit}>
+            {mode === 'login' && options?.sso?.enabled && options.sso.login_url && (
+              <>
+                <Button asChild type="button" variant="outline" className="w-full">
+                  <a href={`${options.sso.login_url}?next=${encodeURIComponent('/')}`} data-testid="sso-login">
+                    <MicrosoftMark /> Sign in with {options.sso.label}
+                  </a>
+                </Button>
+                {options.sso.local_login ? (
+                  <div className="relative py-1 text-center text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <span className="relative z-10 bg-background px-2">or with e-mail</span>
+                    <span className="absolute inset-x-0 top-1/2 -z-0 border-t" aria-hidden />
+                  </div>
+                ) : <p className="text-center text-xs text-muted-foreground">Use your company account. Guests and demo users: see the invitation e-mail.</p>}
+              </>
+            )}
             {mode === 'signup' && (
               <div><Label>Full name <Req /></Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="mt-1" autoComplete="name" required /></div>
             )}
@@ -178,5 +193,14 @@ export function AuthDialog({ mode, open, onOpenChange, onSwitch }: { mode: AuthM
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function MicrosoftMark() {
+  return (
+    <svg viewBox="0 0 21 21" className="h-4 w-4" aria-hidden>
+      <rect x="1" y="1" width="9" height="9" fill="#F25022" /><rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" /><rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
   )
 }

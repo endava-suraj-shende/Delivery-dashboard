@@ -135,10 +135,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return fwd.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
+    SSO_PATHS = ("/api/v1/auth/sso/login", "/api/v1/auth/sso/callback")
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.method == "POST":
-            path = request.url.path
-            limit = self.auth_limit if path in self.AUTH_PATHS else self.upload_limit if path in self.UPLOAD_PATHS else 0
+        path = request.url.path
+        if request.method == "POST" or path in self.SSO_PATHS:
+            limit = self.auth_limit if path in self.AUTH_PATHS or path in self.SSO_PATHS else self.upload_limit if path in self.UPLOAD_PATHS else 0
             if limit > 0:
                 retry = self.limiter.allow(f"{path}|{self._client(request)}", limit)
                 if retry is not None:

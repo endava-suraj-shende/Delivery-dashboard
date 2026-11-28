@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -67,7 +68,8 @@ def options(c: Container = Depends(container), db: Session = Depends(get_db)) ->
             "allowed_domains": [d["value"] for d in pol["domains"]],
             "email_enabled": c.email.enabled,
             "password_rules": "At least 10 characters with upper and lower case letters, a digit and a symbol.",
-            "code_roles": ["employee", "dm", "admin", "guest"], "guest_days": 5}
+            "code_roles": ["employee", "dm", "admin", "guest"], "guest_days": 5,
+            "sso": c.sso.public_info()}
 
 
 @router.post("/signup")
@@ -99,6 +101,40 @@ def login(body: Login, response: Response, c: Container = Depends(container), db
     from app.db.models import User as U
     u = db.get(U, out["user"]["id"])
     return {"user": _with_boards(c, u) if u else out["user"]}
+
+
+SSO_STATE_COOKIE = "edd_sso"
+
+
+@router.get("/sso/login", include_in_schema=True, summary="Start single sign-on (redirects to the identity provider)")
+def sso_login(next: str = Query("/", max_length=200), c: Container = Depends(container)) -> RedirectResponse:
+    out = c.sso.begin(next)
+    resp = RedirectResponse(out["url"], status_code=302)
+    resp.set_cookie(SSO_STATE_COOKIE, out["cookie"], httponly=True, samesite="lax", secure=c.settings.cookie_secure_effective,
+                    max_age=600, path="/api/v1/auth/sso")
+    return resp
+
+
+@router.get("/sso/callback", include_in_schema=False)
+def sso_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None,
+                 error_description: Optional[str] = None, c: Container = Depends(container), db: Session = Depends(get_db)) -> RedirectResponse:
+    from urllib.parse import quote
+    front = c.settings.public_url.rstrip("/")
+    if error or not code:
+        return RedirectResponse(f"{front}/welcome?sso_error={quote(error_description or error or 'cancelled')}", status_code=302)
+    try:
+        out = c.sso.complete(db, code, state or "", request.cookies.get(SSO_STATE_COOKIE))
+        db.commit()
+    except Exception as e:  # noqa: BLE001 - surface the reason on the welcome page instead of a bare JSON error
+        db.rollback()
+        msg = getattr(e, "message", None) or str(e) or "Sign-in failed"
+        resp = RedirectResponse(f"{front}/welcome?sso_error={quote(msg)}", status_code=302)
+        resp.delete_cookie(SSO_STATE_COOKIE, path="/api/v1/auth/sso")
+        return resp
+    resp = RedirectResponse(f"{front}{out['next']}", status_code=302)
+    resp.delete_cookie(SSO_STATE_COOKIE, path="/api/v1/auth/sso")
+    _set_cookie(resp, c, out["token"])
+    return resp
 
 
 @router.post("/logout")

@@ -32,6 +32,7 @@ export interface AuthOptions {
   password_rules: string
   code_roles: Role[]
   guest_days: number
+  sso?: { enabled: boolean; label: string; login_url: string | null; local_login: boolean }
 }
 
 export interface MailResult {
