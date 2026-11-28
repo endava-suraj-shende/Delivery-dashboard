@@ -307,3 +307,28 @@ def test_saved_views_crud_and_sharing(client, anon):
     assert shared and shared[0]["mine"] is False and shared[0]["owner"]["email"] == "admin@endava.com"
     assert anon.delete(f"/api/v1/views/{v['id']}").status_code == 404  # not the owner
     assert client.delete(f"/api/v1/views/{v['id']}").json()["ok"] is True
+
+
+def test_intelligence_endpoints(client):
+    st = client.get("/api/v1/intelligence/status").json()
+    assert "model" in st and st["llm"]["enabled"] is False and "assistant" in st["capabilities"]
+    r = client.get("/api/v1/intelligence/risk", params=ALL).json()
+    assert {"items", "summary", "by_employee", "model"} <= set(r)
+    assert r["summary"]["open"] == len(r["items"]) or r["summary"]["open"] >= len(r["items"])
+    for it in r["items"]:
+        assert 0 <= it["risk"] <= 1 and it["band"] in ("high", "medium", "low") and isinstance(it["factors"], list)
+    assert r["model"]["method"].startswith("heuristic")  # sample data is too small to train -> transparent fallback
+    an = client.get("/api/v1/intelligence/anomalies", params=ALL).json()
+    assert an["weeks"] == 10 and isinstance(an["items"], list)
+    rc = client.get("/api/v1/intelligence/recommendations", params=ALL).json()
+    assert isinstance(rc["items"], list) and all({"kind", "title", "detail", "tickets"} <= set(x) for x in rc["items"])
+    a = client.post("/api/v1/intelligence/ask", params=ALL, json={"question": "what is blocked for Alice A this month?"}).json()
+    assert a["spec"]["intent"] == "blocked" and a["spec"]["parser"] == "rules"
+    assert a["filters"]["employee"] == ["Alice A"] and a["answer"] and a["links"]
+    a2 = client.post("/api/v1/intelligence/ask", params=ALL, json={"question": "when will we finish?"}).json()
+    assert a2["spec"]["intent"] == "forecast"
+    a3 = client.post("/api/v1/intelligence/ask", params=ALL, json={"question": "who completed the most?"}).json()
+    assert a3["spec"]["intent"] == "people" and "Most completed" in a3["answer"]
+    n = client.get("/api/v1/intelligence/narrative", params=ALL).json()
+    assert n["headline"] and n["polished"] is None
+    assert client.post("/api/v1/intelligence/retrain").json()["trained"] in (True, False)

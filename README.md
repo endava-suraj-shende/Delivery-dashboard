@@ -155,8 +155,10 @@ frontend/src/
   layouts/                 sidebar + header shell (search, date range, refresh, theme, demo banner)
   hooks/                   useSession, global filters, data hooks
   components/              shadcn-style primitives, Recharts charts, TanStack DataTable, KPI cards
-  modules/                 welcome · auth · executive · employees · teams · sprints · projects · jira
+  modules/                 welcome · auth · executive · intelligence · employees · teams · sprints · projects · jira
                            deployments · reports · excel · config · admin
+intelligence/              ML / AI layer (see "AI insights"): features, numpy logistic risk model, anomalies,
+                           recommendations, NL assistant, optional LLM provider · tests/
 Data/                      source workbooks (business data, git-ignored)
 storage/                   app.db · uploads/ · reports/ · demo/ (runtime, git-ignored)
 ```
@@ -257,6 +259,24 @@ Headers are matched fuzzily (case, spaces, punctuation, synonyms such as `Jira/O
 9. A production release row does not imply the Jira ticket is complete.
 
 The global date filter (default **last 30 days**, inclusive) is applied server-side to every KPI, chart, table, insight and report. A sprint filter is a period of its own and overrides the date range.
+
+---
+
+## 🧠 AI insights (`/intelligence`)
+
+The `intelligence/` package adds a machine-learning layer on top of the same analytics engine that feeds every other page, so each number can be cross-checked in **Tickets** or **People**. Nothing leaves the server unless you opt in to a language model.
+
+| Capability | How it works | Where |
+|---|---|---|
+| **Slip-risk scoring** | A class-weighted L2 logistic regression (pure numpy) is trained on this installation's own *completed* tickets. Each ticket is replayed as point-in-time **snapshots** 3/7/14/21 days after it first appeared, using only the updates known at that moment, and labelled with its eventual outcome (late, or cycle time > max(2 × median, 7 d)). No leakage, so the reported AUC is honest. Open tickets are scored with today as the cutoff; every score lists the factors that drove it. Falls back to a transparent heuristic when there are < 30 examples. Retrains automatically on every data reload. | Risk tab · `GET /intelligence/risk` |
+| **Anomaly detection** | Weekly series (completed, started, blocked, status updates) per team / person / board compared with their own last 10 weeks using robust z-scores (median / MAD, threshold 2.5). | Anomalies tab · `GET /intelligence/anomalies` |
+| **Recommendations** | Reviewable actions derived from risk and load: focus list, long-blocked escalations, rebalancing from overloaded to light team-mates, due-soon risks, data hygiene (unassigned work). | Recommendations tab · `GET /intelligence/recommendations` |
+| **Ask** | A question is parsed into a *filter spec* (rules, or an LLM when configured), validated against the known people/boards/sprints, and answered by the engine — never free-form text from a model. The current page filters are the baseline. | Ask tab · `POST /intelligence/ask` |
+| **Narrative polish** | With a language model configured, the rule-based narrative is rewritten into a client-ready paragraph; the facts are supplied by the engine. | `GET /intelligence/narrative` |
+
+**Optional language model.** Set `EDD_LLM_PROVIDER=azure_openai` or `openai_compatible` plus endpoint, key and model (see `.env.example`). Only aggregate figures and dimension names are sent unless `EDD_LLM_SEND_DETAILS=1`. Every feature works without it.
+
+**Verify:** `python -m pytest intelligence/tests -q` (from the repository root) and `backend/tests/test_api.py::test_intelligence_endpoints`.
 
 ---
 
@@ -437,6 +457,7 @@ All endpoints live under `/api/v1` and are documented interactively at `/docs`. 
 | `reports` | `types`, `generate`, `employee`, `team`, `project`, `management`, `download/{id}`, `schedules` (CRUD, `preview`, `send-now`) | DM / admin |
 | `config` | `status` (GET/PUT, `mapping`, `reset`), `app` | superuser |
 | `views` | saved views: list / create / update (share) / delete | signed-in |
+| `intelligence` | `status`, `risk`, `anomalies`, `recommendations`, `ask` (POST), `narrative`, `retrain` (POST) | viewers |
 | `search`, `meta` | global search, `dimensions`, `presets` | viewers |
 
 Query parameters: `start_date`, `end_date`, `preset`, `employee`, `project`, `application`, `jira_board`, `sprint`, `status`, `work_type`, `dev_deployment`, `prod_deployment`, `prod_required`, `ticket`, `search` (list parameters may repeat).
@@ -455,6 +476,7 @@ Copy `.env.example` to `.env`. Everything has a sensible default.
 | 🔐 Auth | `EDD_DATABASE_URL`, `EDD_AUTO_MIGRATE`, `EDD_AUTH_SECRET`, `EDD_SESSION_HOURS`, `EDD_COOKIE_SECURE`, `EDD_DEFAULT_ALLOWED_DOMAINS` |
 | 📧 E-mail | `EDD_RESEND_API_KEY`, `EDD_EMAIL_FROM` |
 | 📄 Reports | `EDD_REPORT_DIR`, `EDD_REPORT_RETENTION` |
+| 🧠 Intelligence (optional LLM) | `EDD_LLM_PROVIDER`, `EDD_LLM_ENDPOINT`, `EDD_LLM_API_KEY`, `EDD_LLM_MODEL`, `EDD_LLM_API_VERSION`, `EDD_LLM_TIMEOUT_SECONDS`, `EDD_LLM_SEND_DETAILS` |
 
 Credentials entered in the UI (default Jira account, per-board accounts) are stored encrypted in `backend/config/` with the key `backend/config/.secret.key` and take precedence over `.env`; `.env` changes need a restart.
 

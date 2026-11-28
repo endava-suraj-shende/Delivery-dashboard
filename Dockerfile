@@ -24,6 +24,7 @@ RUN useradd --create-home --uid 10001 appuser && mkdir -p /data/Data /data/stora
 COPY backend/requirements.lock backend/requirements.lock
 RUN pip install -r backend/requirements.lock
 COPY backend/ backend/
+COPY intelligence/ intelligence/
 COPY manage.py run.py ./
 COPY --from=frontend /ui/dist frontend/dist
 USER appuser

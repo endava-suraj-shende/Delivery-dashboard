@@ -26,6 +26,7 @@ const ExcelPage = lazy(() => import('@/modules/excel/ExcelPage'))
 const StatusConfigPage = lazy(() => import('@/modules/config/StatusConfigPage'))
 const JiraConnectionsPage = lazy(() => import('@/modules/config/JiraConnectionsPage'))
 const ComparePage = lazy(() => import('@/modules/config/MiscPages').then((m) => ({ default: m.ComparePage })))
+const IntelligencePage = lazy(() => import('@/modules/intelligence/IntelligencePage'))
 const WelcomePage = lazy(() => import('@/modules/welcome/WelcomePage'))
 const DemoPage = lazy(() => import('@/modules/welcome/DemoPage'))
 const SettingsPage = lazy(() => import('@/modules/config/MiscPages').then((m) => ({ default: m.SettingsPage })))
@@ -40,7 +41,7 @@ const PendingApprovalPage = lazy(() => import('@/modules/auth/AuthPages').then((
 const V: Role[] = ['admin', 'dm', 'guest']  // dashboard viewers (guests see demo data)
 export const ROUTE_ROLES: Record<string, Role[]> = {
   '/': V, '/employees': V, '/team': V, '/sprints': V, '/projects': V, '/jira': V, '/deployments/dev': V,
-  '/deployments/production': V, '/compare': V, '/reports': ['admin', 'dm'],
+  '/deployments/production': V, '/compare': V, '/intelligence': V, '/reports': ['admin', 'dm'],
   '/excel': ['admin', 'dm', 'employee'], '/config/jira': ['admin', 'dm'],
   '/config/status': ['admin'], '/settings': ['admin'], '/admin/users': ['admin'],
 }
@@ -124,6 +125,7 @@ export default function App() {
                     <Route path="deployments/dev" element={<Suspense fallback={<LoadingState />}><DevDeploymentPage /></Suspense>} />
                     <Route path="deployments/production" element={<Suspense fallback={<LoadingState />}><ProductionPage /></Suspense>} />
                     <Route path="compare" element={<Suspense fallback={<LoadingState />}><ComparePage /></Suspense>} />
+                    <Route path="intelligence" element={<Suspense fallback={<LoadingState />}><IntelligencePage /></Suspense>} />
                     <Route path="reports" element={<Suspense fallback={<LoadingState />}><ReportsPage /></Suspense>} />
                     <Route path="excel" element={<Suspense fallback={<LoadingState />}><ExcelPage /></Suspense>} />
                     <Route path="config/status" element={<Suspense fallback={<LoadingState />}><StatusConfigPage /></Suspense>} />

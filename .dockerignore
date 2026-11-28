@@ -19,3 +19,4 @@ docs
 .run.lock
 backend/config/*.json
 backend/config/.secret.key
+intelligence/tests

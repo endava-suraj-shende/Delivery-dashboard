@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.auth_deps import admin_only, excel_access, viewers
-from app.api.v1 import admin, analytics, auth, excel, jira_live, reports, views
+from app.api.v1 import admin, analytics, auth, excel, intelligence, jira_live, reports, views
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.schemas.responses import HealthOut
@@ -163,6 +163,7 @@ for r in (analytics.employees, analytics.projects, analytics.jira, analytics.dep
 app.include_router(reports.router, prefix=API)
 app.include_router(jira_live.router, prefix=API)
 app.include_router(views.router, prefix=API)
+app.include_router(intelligence.router, prefix=API)
 
 
 @app.get("/", tags=["Health"], include_in_schema=False)

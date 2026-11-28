@@ -78,4 +78,23 @@ test.describe('Delivery workflows', () => {
     await expect(page).toHaveURL(/\/employees\/.+/)
     await expect(page.getByTestId('narrative-card').getByText(/This period in one paragraph/)).toBeVisible()
   })
+
+  test('AI insights: risk table, recommendations, assistant answer', async ({ page }) => {
+    await login(page, ACCOUNTS.demoManager)
+    await waitForData(page)
+    await page.getByRole('link', { name: 'AI insights' }).click()
+    await expect(page).toHaveURL(/\/intelligence/)
+    const risk = page.getByTestId('risk-table')
+    await expect(risk).toBeVisible({ timeout: 90_000 })  // first call trains the model
+    await expect(risk.locator('tbody tr').first()).toBeVisible()
+    await risk.locator('tbody tr').first().click()
+    await expect(risk.getByText('Why:')).toBeVisible()
+
+    await page.getByRole('tab', { name: /Recommendations/ }).click()
+    await expect(page.getByTestId('recommendations').or(page.getByText('Nothing to recommend'))).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Ask' }).click()
+    await page.getByRole('button', { name: 'Who has the most blocked tickets?' }).click()
+    await expect(page.getByText(/intent: people/)).toBeVisible({ timeout: 30_000 })
+  })
 })

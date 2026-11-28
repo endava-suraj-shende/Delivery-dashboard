@@ -189,6 +189,105 @@ export const dashboardApi = {
   quality: (qs: string, scope: 'period' | 'all' = 'period') => api.get<DataQuality>(`/dashboard/data-quality${q(qs, { scope })}`).then((r) => r.data),
 }
 
+// ---------------------------------------------------------------------------------------------- intelligence
+export interface RiskModelStatus {
+  trained: boolean
+  reason: string | null
+  samples: number
+  positives: number
+  tickets: number
+  snapshot_ages: number[]
+  auc: number | null
+  accuracy: number | null
+  brier: number | null
+  trained_at: string | null
+  data_version: number | null
+  top_features: { feature: string; weight: number }[]
+  method: string
+  features: string[]
+}
+export interface IntelligenceStatus {
+  model: RiskModelStatus
+  llm: { enabled: boolean; provider: string | null; model: string | null; sends_ticket_text: boolean }
+  capabilities: string[]
+}
+export type RiskBand = 'high' | 'medium' | 'low'
+export interface RiskFactor { factor: string; value: number; impact: number }
+export interface RiskItem {
+  ticket_id: string
+  employee: string | null
+  project: string | null
+  jira_board: string | null
+  sprint: string | null
+  work_status: string | null
+  work_type: string | null
+  due_date: string | null
+  overdue: boolean
+  ticket_link: string | null
+  summary: string | null
+  risk: number
+  band: RiskBand
+  factors: RiskFactor[]
+  age_days: number
+  days_blocked: number
+}
+export interface RiskSummary { open: number; high: number; medium: number; low: number; expected_slips?: number }
+export interface RiskResponse {
+  items: RiskItem[]
+  summary: RiskSummary
+  by_employee?: { employee: string; open: number; high: number; avg_risk: number }[]
+  model: RiskModelStatus
+}
+export interface AnomalyItem {
+  scope: string
+  group_by: string
+  metric: string
+  metric_label: string
+  week: string
+  value: number
+  baseline_median: number
+  z: number
+  direction: 'up' | 'down'
+  severity: 'danger' | 'warning' | 'info'
+  text: string
+}
+export interface AnomaliesResponse {
+  weeks: number
+  threshold: number
+  items: AnomalyItem[]
+  series: Record<string, { week: string; value: number }[]>
+}
+export interface Recommendation {
+  kind: 'focus' | 'unblock' | 'rebalance' | 'due' | 'hygiene' | string
+  priority: number
+  title: string
+  detail: string
+  evidence: string[]
+  effect: string | null
+  tickets: string[]
+  employees?: string[]
+}
+export interface RecommendationsResponse { items: Recommendation[]; risk_summary: RiskSummary; model: RiskModelStatus }
+export interface AskResponse {
+  question: string
+  spec: { intent: string; parser: string; status: string[]; employee: string[]; project: string[]; jira_board: string[]; sprint: string[]; preset: string | null }
+  filters: Period & Record<string, unknown>
+  answer: string
+  data: Record<string, unknown> | null
+  links?: { label: string; url: string }[]
+  grounding?: string
+}
+
+export const intelligenceApi = {
+  status: () => api.get<IntelligenceStatus>('/intelligence/status').then((r) => r.data),
+  risk: (qs: string, limit = 100) => api.get<RiskResponse>(`/intelligence/risk${q(qs, { limit })}`).then((r) => r.data),
+  anomalies: (qs: string, groupBy: 'employee' | 'jira_board' = 'employee') =>
+    api.get<AnomaliesResponse>(`/intelligence/anomalies${q(qs, { group_by: groupBy })}`).then((r) => r.data),
+  recommendations: (qs: string) => api.get<RecommendationsResponse>(`/intelligence/recommendations${q(qs)}`).then((r) => r.data),
+  ask: (qs: string, question: string) => api.post<AskResponse>(`/intelligence/ask${q(qs)}`, { question }).then((r) => r.data),
+  retrain: () => api.post<RiskModelStatus>('/intelligence/retrain').then((r) => r.data),
+}
+
 export const employeeApi = {
   list: (qs: string) => api.get<EmployeesList>(`/employees${q(qs)}`).then((r) => r.data),
   performanceSummary: (qs: string) => api.get<EmployeesPerformance>(`/employees/performance${q(qs)}`).then((r) => r.data),

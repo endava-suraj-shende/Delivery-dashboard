@@ -90,6 +90,15 @@ class Settings(BaseSettings):
     sso_default_role: str = "employee"    # role for first-time SSO users (superuser can change it later)
     sso_auto_activate: bool = True        # False = new SSO users wait for superuser approval
     sso_allow_local_login: bool = True    # False = hide e-mail/password form (guests/demo/admins can still POST /auth/login)
+    # Intelligence layer (root package ./intelligence). The optional language model is used for language only.
+    # EDD_LLM_PROVIDER = "" (off) | "azure_openai" | "openai_compatible"
+    llm_provider: str = ""
+    llm_endpoint: str = ""            # Azure: https://<resource>.openai.azure.com ; compatible: https://host/v1
+    llm_api_key: str = ""
+    llm_model: str = ""               # Azure deployment name or model id
+    llm_api_version: str = "2024-10-21"
+    llm_timeout_seconds: int = 30
+    llm_send_details: bool = False    # allow ticket summaries/comments to be sent to the model (default: facts only)
     # Perimeter hardening
     csrf_protection: bool = True
     rate_limit_auth_per_minute: int = 30      # per client IP (login: per IP+account) on /auth/login, /auth/signup, /auth/forgot-password

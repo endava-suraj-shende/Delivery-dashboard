@@ -438,6 +438,11 @@ Monte-Carlo forecast · reconciliation workflow · saved views/share links · en
 
 Natural-language Q&A · optional Git lead-time signal · client share links with watermark · multi-tenant hardening · Teams notifications.
 
+> **Status (Nov 2026):** the intelligence layer shipped as a root-level `intelligence/` package and an **AI insights** page under Overview:
+> leakage-free ML slip-risk model (point-in-time snapshots, numpy logistic regression, explained scores, auto-retrain), robust z-score anomaly detection,
+> prioritised recommendations, and the natural-language assistant (rules by default; optional Azure OpenAI / OpenAI-compatible parser that only ever
+> produces a filter spec, so answers are always engine-computed). Git lead-time, share links, multi-tenant and Teams remain open.
+
 ### 30 / 60 / 90-day view
 
 ```mermaid

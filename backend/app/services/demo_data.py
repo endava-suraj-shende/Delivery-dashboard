@@ -454,6 +454,8 @@ class DemoWorkspace:
         from app.services.forecast_service import ForecastService
         self.forecast = ForecastService(self.analytics)
         self.reports.narrative, self.reports.forecast = self.narrative, self.forecast
+        from intelligence.hub import IntelligenceHub
+        self.intelligence = IntelligenceHub(s, self.analytics, self.narrative, self.forecast)
         from app.services.reconciliation_workflow import ReconciliationWorkflow
         self.recon_workflow = ReconciliationWorkflow(self, workspace="demo")
         self.jira_pool = JiraClientPool("demo@example.com", "demo-token", 5, 60)
