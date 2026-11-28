@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Bot, Eraser, Send, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AssistantAnswerData } from '@/components/common/AssistantAnswerData'
 import { useFilters } from '@/hooks/useFilters'
 import { can, useSession } from '@/hooks/useSession'
 import { intelligenceApi, errorMessage, type AskResponse } from '@/services/api'
@@ -103,7 +104,7 @@ function AssistantPanel() {
   return (
     <div className="no-print fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="AI Assistant" data-testid="assistant-panel">
       <div className="absolute inset-0 bg-black/30 animate-in fade-in-0 duration-200" onClick={assistant.close} aria-hidden />
-      <aside className="relative flex h-full w-full max-w-[440px] flex-col border-l bg-background shadow-2xl animate-in slide-in-from-right duration-300">
+      <aside className="relative flex h-full w-full max-w-[520px] flex-col border-l bg-background shadow-2xl animate-in slide-in-from-right duration-300">
         <header className="flex items-start gap-3 border-b px-4 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
@@ -136,12 +137,13 @@ function AssistantPanel() {
               <div className="flex justify-end"><p className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm text-primary-foreground animate-in fade-in-0 slide-in-from-bottom-1 duration-200">{t.question}</p></div>
               <div className="flex gap-2">
                 <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-3.5 w-3.5" /></span>
-                <div className="min-w-0 max-w-[88%] rounded-2xl rounded-tl-sm border bg-card px-3 py-2 text-sm animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                <div className="min-w-0 max-w-[92%] flex-1 rounded-2xl rounded-tl-sm border bg-card px-3 py-2 text-sm animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
                   {!t.reply && !t.error && <Thinking />}
                   {t.error && <p className="text-red-600">{t.error}</p>}
                   {t.reply && (
                     <>
                       <p className="leading-relaxed">{t.reply.answer}</p>
+                      <AssistantAnswerData reply={t.reply} onNavigate={(url) => { assistant.close(); nav(url) }} />
                       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                         <span className="rounded bg-muted px-1.5 py-0.5">{t.reply.spec.intent.replace(/_/g, ' ')}</span>
                         {t.reply.filters.label ? <span>{String(t.reply.filters.label)}</span> : null}

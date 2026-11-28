@@ -247,6 +247,11 @@ export interface AnomalyItem {
   value: number
   baseline_median: number
   z: number
+  baseline_min?: number
+  baseline_max?: number
+  baseline_weeks?: number
+  history?: { week: string; value: number }[]
+  meaning?: string
   direction: 'up' | 'down'
   severity: 'danger' | 'warning' | 'info'
   text: string

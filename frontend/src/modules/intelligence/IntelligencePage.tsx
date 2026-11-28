@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Brain, Check, Copy, ExternalLink, Gauge, ListChecks,
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Brain, Check, ChevronRight, Copy, ExternalLink, Gauge, ListChecks,
   MessageSquareText, RefreshCw, ShieldCheck, Sparkles, TrendingUp,
 } from 'lucide-react'
 import { GlobalFilterBar, PageHeader } from '@/components/common/PageHeader'
@@ -424,59 +424,92 @@ const URGENCY: Record<number, { label: string; cls: string }> = {
   3: { label: 'When convenient', cls: 'border-border bg-muted text-muted-foreground' },
 }
 
+const URGENCY_GROUPS: { priority: number; label: string; hint: string; accent: string; dot: string }[] = [
+  { priority: 1, label: 'Do today', hint: 'Highest predicted impact - review before anything else', accent: 'border-l-red-500', dot: 'bg-red-500' },
+  { priority: 2, label: 'This week', hint: 'Plan into the next few days', accent: 'border-l-amber-500', dot: 'bg-amber-500' },
+  { priority: 3, label: 'When convenient', hint: 'Housekeeping that keeps the data trustworthy', accent: 'border-l-slate-400', dot: 'bg-slate-400' },
+]
+
 function RecommendedActions({ items }: { items: Recommendation[] }) {
   const nav = useNavigate()
   const { queryString, setList } = useFilters()
   const [selected, setSelected] = useState<ActionRow | null>(null)
+  const [kind, setKind] = useState<string>('all')
   const qs = queryString ? `?${queryString}` : ''
   const openTicket = (id: string) => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(id)}`)
   const rows = useMemo<ActionRow[]>(() => items.map((r, idx) => ({ ...r, idx, urgency: URGENCY[r.priority]?.label ?? 'Later' })), [items])
-
-  const columns = useMemo<ColumnDef<ActionRow, unknown>[]>(() => [
-    { accessorKey: 'idx', header: '#', cell: ({ getValue }) => <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{(getValue() as number) + 1}</span>, size: 50, enableSorting: false },
-    { accessorKey: 'urgency', header: 'Urgency', cell: ({ row }) => { const u = URGENCY[row.original.priority] ?? URGENCY[3]; return <span className={cn('inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium', u.cls)}>{u.label}</span> }, filterFn: 'equalsString', size: 110 },
-    { accessorKey: 'kind', header: 'Type', cell: ({ getValue }) => { const k = ACTION_KIND[getValue() as string]; return <Badge variant="secondary" className="font-normal" title={k?.hint}>{k?.label ?? (getValue() as string)}</Badge> }, filterFn: 'equalsString', size: 100 },
-    { accessorKey: 'title', header: 'Recommended action', cell: ({ row }) => (
-      <div className="min-w-[240px]">
-        <p className="font-medium leading-snug">{row.original.title}</p>
-        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={row.original.detail}>{row.original.detail}</p>
-      </div>
-    ) },
-    { accessorKey: 'tickets', header: 'Tickets', enableSorting: false, cell: ({ row }) => (
-      <div className="flex min-w-[210px] flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        {row.original.tickets.slice(0, 3).map((t) => <TicketLink key={t} id={t} onOpen={openTicket} chip />)}
-        {row.original.tickets.length > 3 && <span className="text-xs text-muted-foreground">+{row.original.tickets.length - 3}</span>}
-        {!row.original.tickets.length && <span className="text-xs text-muted-foreground">-</span>}
-      </div>
-    ) },
-    { accessorKey: 'effect', header: 'Why it matters', cell: ({ getValue }) => <span className="block max-w-[260px] truncate text-xs text-muted-foreground" title={(getValue() as string) ?? ''}>{(getValue() as string | null) ?? '-'}</span>, enableSorting: false },
-  ], [openTicket])
+  const kinds = useMemo(() => [...new Set(items.map((i) => i.kind))], [items])
+  const visible = rows.filter((r) => kind === 'all' || r.kind === kind)
 
   if (!items.length) return <EmptyState title="Nothing to recommend" description="No high-risk, blocked or overloaded work was found in this scope." icon={<ListChecks className="h-6 w-6" />} />
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Recommended actions, in priority order</CardTitle>
-        <CardDescription>Derived from the risk scores and current load. Click a row for the evidence and every affected ticket.</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0" data-testid="recommendations">
-        <DataTable<ActionRow>
-          data={rows}
-          columns={columns}
-          pageSize={25}
-          dense
-          searchPlaceholder="Search actions"
-          exportName="recommended-actions"
-          initialSorting={[{ id: 'idx', desc: false }]}
-          onRowClick={setSelected}
-          rowClassName={(r) => rowEntrance(r.idx)}
-          columnFilters={[
-            { id: 'urgency', label: 'Urgency', options: Object.values(URGENCY).map((u) => ({ value: u.label, label: u.label })) },
-            { id: 'kind', label: 'Type', options: Object.entries(ACTION_KIND).map(([k, v]) => ({ value: k, label: v.label })) },
-          ]}
-        />
-      </CardContent>
+    <div className="space-y-4" data-testid="recommendations">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Derived from the risk scores and current load, grouped by when to act. Click a row for the evidence and every affected ticket.</p>
+        {kinds.length > 1 && (
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by type">
+            <Button size="sm" variant={kind === 'all' ? 'default' : 'outline'} onClick={() => setKind('all')}>All</Button>
+            {kinds.map((k) => <Button key={k} size="sm" variant={kind === k ? 'default' : 'outline'} onClick={() => setKind(k)} title={ACTION_KIND[k]?.hint}>{ACTION_KIND[k]?.label ?? k}</Button>)}
+          </div>
+        )}
+      </div>
+
+      {URGENCY_GROUPS.map((g, gi) => {
+        const group = visible.filter((r) => (r.priority >= 3 ? 3 : r.priority) === g.priority)
+        if (!group.length) return null
+        return (
+          <Card key={g.priority} className={cn('min-w-0 overflow-hidden border-l-4 animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400', g.accent)} style={{ animationDelay: `${gi * 120}ms` }}>
+            <CardHeader className="flex flex-row items-center gap-3 space-y-0 py-3">
+              <span className={cn('h-2.5 w-2.5 rounded-full', g.dot)} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-base">{g.label} <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{group.length}</span></CardTitle>
+                <CardDescription>{g.hint}</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-y border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="w-10 px-3 py-2 text-left">#</th>
+                      <th className="w-28 px-3 py-2 text-left">Type</th>
+                      <th className="px-3 py-2 text-left">Recommended action</th>
+                      <th className="px-3 py-2 text-left">Tickets</th>
+                      <th className="px-3 py-2 text-left">Why it matters</th>
+                      <th className="w-8 px-3 py-2" aria-label="Details" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.map((r, i) => {
+                      const k = ACTION_KIND[r.kind]
+                      return (
+                        <tr key={r.idx} onClick={() => setSelected(r)} className={cn('cursor-pointer border-b border-border/60 odd:bg-background even:bg-muted/20 transition-colors hover:bg-primary/[0.06]', rowEntrance(i))}>
+                          <td className="px-3 py-2.5"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{r.idx + 1}</span></td>
+                          <td className="px-3 py-2.5"><Badge variant="secondary" className="whitespace-nowrap font-normal" title={k?.hint}>{k?.label ?? r.kind}</Badge></td>
+                          <td className="min-w-[260px] px-3 py-2.5">
+                            <p className="font-medium leading-snug">{r.title}</p>
+                            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={r.detail}>{r.detail}</p>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex min-w-[200px] flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              {r.tickets.slice(0, 3).map((t) => <TicketLink key={t} id={t} onOpen={openTicket} chip />)}
+                              {r.tickets.length > 3 && <span className="text-xs text-muted-foreground">+{r.tickets.length - 3}</span>}
+                              {!r.tickets.length && <span className="text-xs text-muted-foreground">-</span>}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5"><span className="block max-w-[280px] truncate text-xs text-muted-foreground" title={r.effect ?? ''}>{r.effect ?? '-'}</span></td>
+                          <td className="px-3 py-2.5 text-muted-foreground"><ChevronRight className="h-4 w-4" aria-hidden /></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-w-xl">
@@ -513,7 +546,7 @@ function RecommendedActions({ items }: { items: Recommendation[] }) {
           )}
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   )
 }
 
@@ -524,11 +557,6 @@ const FLOW_SERIES: LineSeries[] = [
   { key: 'blocked', label: 'Blocked', color: 'red' },
 ]
 const ACTIVITY_SERIES: LineSeries[] = [{ key: 'activity', label: 'Status updates', color: 'purple' }]
-const SEV_ICON: Record<AnomalyItem['severity'], { cls: string; ring: string }> = {
-  danger: { cls: 'bg-red-500/10 text-red-600 dark:text-red-400', ring: 'border-l-red-500' },
-  warning: { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', ring: 'border-l-amber-500' },
-  info: { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', ring: 'border-l-sky-500' },
-}
 
 function EarlyWarnings({ queryString }: { queryString: string }) {
   const [groupBy, setGroupBy] = useState<'employee' | 'jira_board'>('employee')
@@ -588,52 +616,121 @@ function EarlyWarnings({ queryString }: { queryString: string }) {
         </ChartCard>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Unusual movements{q.data.items.length ? ` (${q.data.items.length})` : ''}</CardTitle>
-          <CardDescription>Ordered by how far each move is from that series' own normal. Click a person to open their page.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {q.data.items.length ? (
-            <ul className="grid gap-3 md:grid-cols-2" data-testid="anomaly-list">
-              {q.data.items.map((a, i) => <WarningCard key={`${a.scope}-${a.metric}-${a.week}`} a={a} index={i} onOpen={a.group_by === 'employee' ? () => nav(`/employees/${encodeURIComponent(a.scope)}${qs}`) : undefined} />)}
-            </ul>
-          ) : (
-            <EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} />
-          )}
-        </CardContent>
-      </Card>
+      <UnusualMovements items={q.data.items} weeks={q.data.weeks} onOpenPerson={(name) => nav(`/employees/${encodeURIComponent(name)}${qs}`)} />
     </div>
   )
 }
 
-function WarningCard({ a, index, onOpen }: { a: AnomalyItem; index: number; onOpen?: () => void }) {
-  const sev = SEV_ICON[a.severity]
-  const base = Math.max(1, a.baseline_median)
-  const change = Math.round(((a.value - a.baseline_median) / base) * 100)
-  const max = Math.max(a.value, a.baseline_median, 1)
-  const Wrapper = onOpen ? 'button' : 'div'
+const SEV_ICON: Record<AnomalyItem['severity'], { cls: string; label: string }> = {
+  danger: { cls: 'bg-red-500/10 text-red-600 dark:text-red-400', label: 'Strong' },
+  warning: { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', label: 'Notable' },
+  info: { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', label: 'Minor' },
+}
+const SCOPE_KIND: Record<string, string> = { team: 'Team', employee: 'Person', jira_board: 'Board' }
+
+/**
+ * One row per flagged series. Every column answers a concrete question: who, what metric, what it did,
+ * what the number was this week, what it usually is (median of the previous weeks and their range), and the trend.
+ */
+function UnusualMovements({ items, weeks, onOpenPerson }: { items: AnomalyItem[]; weeks: number; onOpenPerson: (name: string) => void }) {
+  const [metric, setMetric] = useState<string>('all')
+  const metrics = useMemo(() => [...new Set(items.map((i) => i.metric))], [items])
+  const rows = items.filter((i) => metric === 'all' || i.metric === metric)
+  const baselineWeeks = items[0]?.baseline_weeks ?? weeks
   return (
-    <li className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400" style={{ animationDelay: `${index * 70}ms` }}>
-      <Wrapper type={onOpen ? 'button' : undefined} onClick={onOpen}
-        className={cn('flex w-full gap-3 rounded-lg border border-l-4 bg-card p-3 text-left transition-all', sev.ring, onOpen && 'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary')}>
-        <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', sev.cls)}>
-          {a.direction === 'up' ? <ArrowUpRight className="h-4 w-4" aria-label="up" /> : <ArrowDownRight className="h-4 w-4" aria-label="down" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium">{a.scope}</p>
-            <span className="shrink-0 text-[11px] text-muted-foreground">week of {fmtDate(a.week)}</span>
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">Unusual movements{items.length ? ` (${items.length})` : ''}</CardTitle>
+            <CardDescription>
+              For every team member, board and the team as a whole, four weekly counts are tracked: <b>tickets started</b>, <b>tickets completed</b>, <b>tickets blocked</b> and <b>status updates</b>.
+              A row appears when <b>this week's count</b> is far outside what that same series did over the <b>previous {baselineWeeks} weeks</b> ("Usual" = the median of those weeks; the range shows their lowest and highest).
+            </CardDescription>
           </div>
-          <p className="text-xs text-muted-foreground">{a.metric_label} {a.direction === 'up' ? 'jumped' : 'dropped'} <span className={cn('font-semibold tabular-nums', a.direction === 'up' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{change > 0 ? '+' : ''}{change}%</span> against its own normal</p>
-          <div className="mt-2 space-y-1 text-[11px]">
-            <div className="flex items-center gap-2"><span className="w-14 shrink-0 text-muted-foreground">This week</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><div className={cn('h-full rounded-full transition-[width] duration-700 ease-out', a.direction === 'up' ? 'bg-emerald-500' : 'bg-red-500')} style={{ width: `${(a.value / max) * 100}%` }} /></div><span className="w-8 text-right font-semibold tabular-nums">{a.value}</span></div>
-            <div className="flex items-center gap-2"><span className="w-14 shrink-0 text-muted-foreground">Usual</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-muted-foreground/40 transition-[width] duration-700 ease-out" style={{ width: `${(a.baseline_median / max) * 100}%` }} /></div><span className="w-8 text-right tabular-nums text-muted-foreground">{Math.round(a.baseline_median)}</span></div>
-          </div>
+          {metrics.length > 1 && (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by metric">
+              <Button size="sm" variant={metric === 'all' ? 'default' : 'outline'} onClick={() => setMetric('all')}>All</Button>
+              {metrics.map((m) => <Button key={m} size="sm" variant={metric === m ? 'default' : 'outline'} onClick={() => setMetric(m)} className="capitalize">{m === 'activity' ? 'Status updates' : m}</Button>)}
+            </div>
+          )}
         </div>
-        <span className="hidden shrink-0 self-start rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground sm:inline" title="Robust z-score">z {a.z > 0 ? '+' : ''}{a.z.toFixed(1)}</span>
-      </Wrapper>
-    </li>
+      </CardHeader>
+      <CardContent className="p-0">
+        {rows.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="anomaly-list">
+              <thead>
+                <tr className="border-b-2 border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-2 text-left">Who</th>
+                  <th className="px-3 py-2 text-left">What happened</th>
+                  <th className="px-3 py-2 text-right">This week</th>
+                  <th className="px-3 py-2 text-right">Usual</th>
+                  <th className="px-3 py-2 text-right">Change</th>
+                  <th className="px-3 py-2 text-left">Trend ({baselineWeeks + 1} wks)</th>
+                  <th className="px-3 py-2 text-left">Strength</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((a, i) => {
+                  const sev = SEV_ICON[a.severity]
+                  const base = Math.max(1, a.baseline_median)
+                  const change = Math.round(((a.value - a.baseline_median) / base) * 100)
+                  const good = (a.metric === 'blocked' && a.direction === 'down') || (a.metric !== 'blocked' && a.direction === 'up' && a.metric !== 'started')
+                  const clickable = a.group_by === 'employee'
+                  return (
+                    <tr key={`${a.scope}-${a.metric}-${a.week}`} onClick={clickable ? () => onOpenPerson(a.scope) : undefined}
+                      className={cn('border-b border-border/60 odd:bg-background even:bg-muted/20 transition-colors hover:bg-primary/[0.06]', clickable && 'cursor-pointer', rowEntrance(i))}>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', sev.cls)}>{a.direction === 'up' ? <ArrowUpRight className="h-4 w-4" aria-label="up" /> : <ArrowDownRight className="h-4 w-4" aria-label="down" />}</span>
+                          <div className="min-w-0">
+                            <p className={cn('truncate font-medium', clickable && 'text-primary')}>{a.scope}</p>
+                            <p className="text-[11px] text-muted-foreground">{SCOPE_KIND[a.group_by] ?? a.group_by}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[320px] px-3 py-2.5">
+                        <p className="font-medium">{a.metric_label.charAt(0).toUpperCase() + a.metric_label.slice(1)} {a.direction === 'up' ? 'went up' : 'went down'}</p>
+                        <p className="text-xs text-muted-foreground">{a.meaning ?? a.text}</p>
+                      </td>
+                      <td className="px-3 py-2.5 text-right"><span className={cn('text-base font-semibold tabular-nums', good ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{a.value}</span><p className="text-[10px] text-muted-foreground">week of {fmtDate(a.week)}</p></td>
+                      <td className="px-3 py-2.5 text-right"><span className="font-medium tabular-nums">{Math.round(a.baseline_median)}</span>{a.baseline_min !== undefined && a.baseline_max !== undefined && <p className="text-[10px] tabular-nums text-muted-foreground">range {a.baseline_min}-{a.baseline_max}</p>}</td>
+                      <td className="px-3 py-2.5 text-right"><span className={cn('inline-block rounded border px-1.5 py-0.5 text-xs font-semibold tabular-nums', good ? BAND_CLS.low : BAND_CLS.high)}>{change > 0 ? '+' : ''}{change}%</span></td>
+                      <td className="px-3 py-2.5"><HistorySparkline history={a.history ?? []} good={good} /></td>
+                      <td className="px-3 py-2.5"><span className={cn('inline-block rounded px-1.5 py-0.5 text-xs font-medium', sev.cls)} title={`Robust z-score ${a.z > 0 ? '+' : ''}${a.z.toFixed(1)}`}>{sev.label}</span></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-4"><EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} /></div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Ten weekly values; the previous weeks are grey (the "usual" basis), the latest point is coloured. */
+function HistorySparkline({ history, good }: { history: { week: string; value: number }[]; good: boolean }) {
+  if (!history.length) return <span className="text-xs text-muted-foreground">-</span>
+  const w = 120
+  const h = 28
+  const vals = history.map((p) => p.value)
+  const max = Math.max(1, ...vals)
+  const step = vals.length > 1 ? w / (vals.length - 1) : w
+  const y = (v: number) => h - 3 - (v / max) * (h - 6)
+  const pts = vals.map((v, i) => `${(i * step).toFixed(1)},${y(v).toFixed(1)}`)
+  const last = vals.length - 1
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-7 w-[120px]" role="img" aria-label={`Weekly values: ${vals.join(', ')}`}>
+      <polyline points={pts.slice(0, last + 1).join(' ')} fill="none" stroke="currentColor" strokeWidth={1.5} className="text-muted-foreground/50" />
+      <line x1={(last - 1) * step} y1={y(vals[last - 1] ?? 0)} x2={last * step} y2={y(vals[last])} stroke="currentColor" strokeWidth={2} className={good ? 'text-emerald-500' : 'text-red-500'} />
+      {vals.slice(0, last).map((v, i) => <circle key={i} cx={i * step} cy={y(v)} r={1.5} className="fill-muted-foreground/50" />)}
+      <circle cx={last * step} cy={y(vals[last])} r={3} className={good ? 'fill-emerald-500' : 'fill-red-500'} />
+    </svg>
   )
 }
 

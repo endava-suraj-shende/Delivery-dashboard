@@ -34,7 +34,7 @@ import { rolesFor, SUPERUSER_ROUTES } from '@/App'
 import { isSuper } from '@/hooks/useSession'
 import { ROLE_LABEL } from '@/services/authApi'
 import { excelApi, errorMessage } from '@/services/api'
-import { cn, fmtDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 type NavItem = { to: string; label: string; icon: typeof BarChart3; end?: boolean; children?: { to: string; label: string; end?: boolean }[] }
 
@@ -135,17 +135,6 @@ export function AppLayout() {
         })}
       </nav>
       <div className="border-t border-white/10 p-2">
-        {!collapsed && status && user?.role !== 'employee' && user?.role !== 'guest' && (
-          <div className="mb-2 rounded-md bg-white/5 p-2 text-[11px] leading-relaxed text-sidebar-foreground/80">
-            <p className="flex items-center gap-1 font-medium text-sidebar-foreground">
-              {status.source === 'excel' ? <Database className="h-3 w-3" /> : <Plug className="h-3 w-3" />} Source: {status.source === 'jira' ? 'Jira boards' : status.source === 'both' ? 'Jira + Excel' : 'Excel'}
-            </p>
-            {status.jira ? <p>{status.jira.boards.length} board(s) | {status.jira.issues} issues</p> : <p>{status.file_count} files</p>}
-            <p>{status.activity_count} activities | {status.employee_count} employees | {status.project_count} projects</p>
-            <p>Range: {fmtDate(status.date_min, { day: '2-digit', month: 'short' })} - {fmtDate(status.date_max, { day: '2-digit', month: 'short' })}</p>
-            <p className="truncate">Refreshed {status.last_refresh ? new Date(status.last_refresh).toLocaleTimeString() : '-'}</p>
-          </div>
-        )}
         <Button variant="ghost" size="sm" className="hidden w-full justify-center text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground lg:flex" onClick={() => setCollapsed((c) => !c)}>
           <ChevronLeft className={cn('transition-transform', collapsed && 'rotate-180')} />
           {!collapsed && 'Collapse'}

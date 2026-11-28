@@ -23,6 +23,17 @@ METRICS = {
     "started": ("tickets started", "both"),
     "activity": ("status updates", "low"),
 }
+# plain-English meaning shown to users, keyed by (metric, direction)
+MEANING = {
+    ("completed", "down"): "Fewer tickets finished than usual - throughput dropped",
+    ("completed", "up"): "More tickets finished than usual",
+    ("blocked", "up"): "More tickets became blocked than usual",
+    ("blocked", "down"): "Fewer tickets became blocked than usual",
+    ("started", "up"): "Unusually many new tickets picked up - possible over-commitment",
+    ("started", "down"): "Unusually few new tickets picked up",
+    ("activity", "down"): "Far fewer status updates logged than usual - work may not be reported",
+    ("activity", "up"): "Far more status updates logged than usual",
+}
 
 
 def robust_z(history: np.ndarray, value: float) -> Optional[float]:
@@ -87,10 +98,14 @@ class AnomalyService:
                 if not flagged:
                     continue
                 med = float(np.median(arr[:-1]))
+                direction_word = "down" if z < 0 else "up"
                 items.append({"scope": label, "group_by": group_by if g else "team", "metric": metric, "metric_label": human,
                               "week": weeks[-1].date().isoformat(), "value": float(arr[-1]), "baseline_median": med, "z": round(float(z), 2),
-                              "direction": "down" if z < 0 else "up", "severity": "danger" if abs(z) >= 2 * Z_THRESHOLD else "warning",
-                              "text": f"{label}: {human} this week = {int(arr[-1])} vs a typical {int(med)} ({'down' if z < 0 else 'up'}, robust z {z:+.1f})."})
+                              "baseline_min": float(arr[:-1].min()), "baseline_max": float(arr[:-1].max()), "baseline_weeks": int(len(arr) - 1),
+                              "history": [{"week": w.date().isoformat(), "value": float(v)} for w, v in zip(weeks, arr)],
+                              "meaning": MEANING.get((metric, direction_word), human),
+                              "direction": direction_word, "severity": "danger" if abs(z) >= 2 * Z_THRESHOLD else "warning",
+                              "text": f"{label}: {human} this week = {int(arr[-1])} vs a typical {int(med)} ({direction_word}, robust z {z:+.1f})."})
         items.sort(key=lambda d: -abs(d["z"]))
         out["items"] = items[:30]
         return out
