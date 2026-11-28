@@ -64,7 +64,8 @@ test.describe('Overview', () => {
     await narrative.getByRole('button', { name: 'Copy narrative' }).click()
     await expect(narrative.getByText('Copied')).toBeVisible()
     const forecast = page.getByTestId('forecast-card')
-    await expect(forecast.getByText(/confidence/i).first()).toBeVisible()
+    await expect(forecast.getByText(/how reliable is this/i)).toBeVisible()
+    await expect(forecast.getByText(/done by/i).first()).toBeVisible()
   })
 
   test('clicking the Blocked KPI applies a status filter and the chip can be removed', async ({ page }) => {

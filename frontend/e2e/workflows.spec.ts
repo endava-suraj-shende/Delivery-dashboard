@@ -35,7 +35,7 @@ test.describe('Delivery workflows', () => {
     await expect(page.getByText('Tickets in sprint')).toBeVisible({ timeout: 60_000 })
     const forecast = page.getByTestId('forecast-card')
     await expect(forecast).toBeVisible()
-    await expect(forecast.getByText(/by sprint end/i)).toBeVisible()
+    await expect(forecast.getByText(/by sprint end/i).first()).toBeVisible()
   })
 
   test('scheduled digest: create, preview, delete', async ({ page }) => {
