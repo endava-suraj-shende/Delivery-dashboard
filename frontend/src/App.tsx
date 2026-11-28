@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/hooks/useTheme'
 import { homeFor, isSuper, SessionProvider, useSession } from '@/hooks/useSession'
 import type { Role } from '@/services/authApi'
 import { ToastProvider } from '@/components/ui/toast'
+import { ConfirmProvider } from '@/components/common/ConfirmDialog'
 import { TooltipProvider } from '@/components/ui/primitives'
 import { LoadingState } from '@/components/common/States'
 
@@ -90,6 +91,7 @@ export default function App() {
       <ThemeProvider>
         <TooltipProvider>
           <ToastProvider>
+            <ConfirmProvider>
             <BrowserRouter>
               <SessionProvider>
               <FilterProvider>
@@ -136,6 +138,7 @@ export default function App() {
               </FilterProvider>
               </SessionProvider>
             </BrowserRouter>
+            </ConfirmProvider>
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>

@@ -74,7 +74,20 @@ class Settings(BaseSettings):
     auth_secret: str = ""
     session_hours: int = 8
     cookie_name: str = "edd_session"
-    cookie_secure: bool = False
+    # None = secure automatically outside the "local" environment
+    cookie_secure: bool | None = None
+    # Serve the built frontend (frontend/dist) from the API process - used by the Docker image. Blank = disabled.
+    static_dir: Path | None = None
+    # Perimeter hardening
+    csrf_protection: bool = True
+    rate_limit_auth_per_minute: int = 10      # per client IP on /auth/login, /auth/signup, /auth/forgot-password
+    rate_limit_upload_per_minute: int = 6
+    security_headers: bool = True
+    # Persist the parsed data snapshot so restarts do not wait for Jira
+    snapshot_dir: Path = PROJECT_ROOT / "storage" / "snapshot"
+    backup_dir: Path = PROJECT_ROOT / "storage" / "backups"
+    backup_keep: int = 14
+    backup_hour_utc: int = 1
     verify_token_hours: int = 24
     reset_token_minutes: int = 60
     max_failed_logins: int = 5
@@ -89,6 +102,10 @@ class Settings(BaseSettings):
     # Resend (https://resend.com). Without an API key links are written to the log (and returned in local env).
     resend_api_key: str = ""
     email_from: str = "Delivery Dashboard <onboarding@resend.dev>"
+
+    @property
+    def cookie_secure_effective(self) -> bool:
+        return self.cookie_secure if self.cookie_secure is not None else self.environment != "local"
 
     @property
     def jira_configured(self) -> bool:

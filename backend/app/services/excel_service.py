@@ -230,6 +230,10 @@ class ExcelService:
             raise InvalidFileError("Uploaded file is empty")
         if len(content) > self.settings.max_upload_bytes:
             raise InvalidFileError(f"File exceeds {self.settings.max_upload_mb} MB limit")
+        # content sniffing: .xlsx/.xlsm are zip containers (PK..), legacy .xls is an OLE compound file
+        magic_ok = content[:2] == b"PK" if suffix in (".xlsx", ".xlsm") else content[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+        if not magic_ok:
+            raise InvalidFileError("File content does not match its extension (not a valid Excel workbook)")
         safe = _SAFE_NAME_RE.sub("_", Path(name).stem)[:120] or "upload"
         target = self.settings.upload_dir / f"{safe}{suffix}"
         if target.exists() and not replace:

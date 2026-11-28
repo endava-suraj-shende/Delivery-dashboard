@@ -13,6 +13,7 @@ from app.api.auth_deps import admin_only, excel_access, viewers
 from app.api.v1 import admin, analytics, auth, excel, jira_live, reports
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
+from app.core.hardening import CsrfOriginMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from app.core.logging import get_logger, setup_logging
 from app.services.container import get_container
 
@@ -33,20 +34,53 @@ async def _watch_sources(interval: int = 15) -> None:
             log.exception("Source watch iteration failed")
 
 
+async def _nightly_backup() -> None:
+    """Background task: one SQLite backup per day at settings.backup_hour_utc, pruned to settings.backup_keep."""
+    from datetime import datetime, timedelta, timezone
+    from app.db.backup import backup_database
+    while True:
+        now = datetime.now(timezone.utc)
+        nxt = now.replace(hour=settings.backup_hour_utc, minute=0, second=0, microsecond=0)
+        if nxt <= now:
+            nxt += timedelta(days=1)
+        await asyncio.sleep((nxt - now).total_seconds())
+        try:
+            path = await asyncio.to_thread(backup_database, settings)
+            log.info("Nightly database backup written: %s", path)
+        except Exception:
+            log.exception("Nightly backup failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     c = get_container()
     log.info("Starting %s v%s - data source: %s (data dir: %s)", settings.app_name, settings.app_version,
              c.data.mode, settings.data_dir)
-    try:
-        await asyncio.to_thread(c.data.load_all, True, "startup")
-    except Exception:
-        log.exception("Initial load failed; the API will retry on first request")
+    if await asyncio.to_thread(c.data.load_from_snapshot):
+        # data is already being served; refresh from the live source without blocking start-up
+        async def _refresh() -> None:
+            try:
+                await asyncio.to_thread(c.data.load_all, True, "startup refresh")
+            except Exception:
+                log.exception("Background refresh after snapshot failed; snapshot stays in use")
+        asyncio.create_task(_refresh())
+    else:
+        try:
+            await asyncio.to_thread(c.data.load_all, True, "startup")
+        except Exception:
+            log.exception("Initial load failed; the API will retry on first request")
     task = asyncio.create_task(_watch_sources())
+    backup_task = asyncio.create_task(_nightly_backup())
     try:
         yield
     finally:
-        task.cancel()
+        for t in (task, backup_task):
+            t.cancel()
+        for t in (task, backup_task):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(
@@ -56,14 +90,20 @@ app = FastAPI(
                 "No authentication — intended for a trusted local environment.",
     lifespan=lifespan,
 )
+# Middleware order (outermost first at request time): security headers -> CORS -> CSRF -> rate limit -> gzip
 app.add_middleware(GZipMiddleware, minimum_size=2048)
+app.add_middleware(RateLimitMiddleware, settings=settings)
+app.add_middleware(CsrfOriginMiddleware, settings=settings, allowed=[*settings.cors_origins, settings.public_url])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "Retry-After"],
 )
+if settings.security_headers:
+    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 register_exception_handlers(app)
 
 API = "/api/v1"
@@ -81,12 +121,39 @@ app.include_router(reports.router, prefix=API)
 app.include_router(jira_live.router, prefix=API)
 
 
-@app.get("/", tags=["Health"])
+@app.get("/", tags=["Health"], include_in_schema=False)
 async def root() -> Dict[str, Any]:
     return {"app": settings.app_name, "version": settings.app_version, "docs": "/docs", "api": API}
 
 
 @app.get("/health", tags=["Health"])
 async def health() -> Dict[str, Any]:
+    """Liveness + readiness: process up, database reachable, data loaded."""
+    from sqlalchemy import text
     c = get_container()
-    return {"status": "ok", "loaded": c.store.is_loaded, "version": c.store.version}
+    db_ok = True
+    try:
+        with c.db() as s:
+            s.execute(text("select 1"))
+    except Exception:
+        db_ok = False
+    status = "ok" if db_ok and c.store.is_loaded else ("degraded" if db_ok else "error")
+    return {"status": status, "database": db_ok, "loaded": c.store.is_loaded, "version": c.store.version,
+            "app_version": settings.app_version}
+
+
+# Registered last so /api, /docs and /health keep precedence over the SPA catch-all.
+if settings.static_dir and settings.static_dir.exists():
+    # Single-container deployment: API + built SPA from one origin (no CORS, cookies first-party).
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/assets", StaticFiles(directory=settings.static_dir / "assets"), name="assets")
+    _index = settings.static_dir / "index.html"
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        candidate = settings.static_dir / full_path
+        if full_path and candidate.is_file() and candidate.resolve().is_relative_to(settings.static_dir.resolve()):
+            return FileResponse(candidate)
+        return FileResponse(_index, headers={"Cache-Control": "no-cache"})

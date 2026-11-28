@@ -791,9 +791,11 @@ class AnalyticsEngine:
         return self._cached(f"overview:{include_prev}:{f.cache_key()}", build)
 
     def activities_view(self, f: Filters, page: int = 1, page_size: int = 50, sort: Optional[str] = None,
-                        desc: bool = True) -> Dict[str, Any]:
+                        desc: bool = True, deployment_only: bool = False, columns: Optional[List[str]] = None) -> Dict[str, Any]:
         f = self.resolve_filters(f)
         a, _, _ = self.scope(f)
+        if deployment_only and len(a):
+            a = a[~a["dev_deployment"].isin(["not_required", "other"]) | (a["prod_required"] == "yes")]
         total = int(len(a))
         if sort and sort in a.columns:
             a = a.sort_values(sort, ascending=not desc, na_position="last")
@@ -805,6 +807,8 @@ class AnalyticsEngine:
                 "ticket_ids", "ticket_raw", "ticket_link", "work_details", "work_type", "work_type_raw", "work_status",
                 "work_status_raw", "prod_required", "prod_required_raw", "dev_deployment", "dev_deployment_raw",
                 "environment", "comments", "sprint", "has_ticket", "is_duplicate", "file_name", "source_row"]
+        if columns:
+            cols = [c for c in cols if c in columns]
         return {"total": total, "page": page, "page_size": page_size, "filters": f.to_dict(),
                 "items": records(a.iloc[start:start + page_size], cols)}
 
@@ -817,15 +821,29 @@ class AnalyticsEngine:
                 "prod_deployment_raw", "comments", "file_name", "source_row"]
         return {"total": int(len(r)), "filters": f.to_dict(), "items": records(r, cols)}
 
-    def tickets_view(self, f: Filters) -> Dict[str, Any]:
-        f = self.resolve_filters(f)
-        return self._cached(f"tickets:{f.cache_key()}", lambda: self._tickets_view(f))
+    # Columns the ticket tables actually render; the *_raw mirrors and bookkeeping fields are only needed by the detail dialog.
+    TICKET_COMPACT_COLS = ["ticket_id", "work_status", "work_status_raw", "work_type", "work_type_raw", "dev_deployment",
+                           "dev_deployment_raw", "prod_required", "prod_required_raw", "prod_deployment", "prod_deployment_raw",
+                           "has_release", "release_date", "work_details", "ticket_link", "employee", "project", "application",
+                           "jira_board", "sprint", "due_date", "due_source", "on_time", "late", "overdue", "activity_count", "first_seen",
+                           "cycle_days", "last_seen", "completed_on", "blocked_since", "status_changed", "is_remaining"]
 
-    def _tickets_view(self, f: Filters) -> Dict[str, Any]:
+    def tickets_view(self, f: Filters, compact: bool = False, page: int = 0, page_size: int = 0) -> Dict[str, Any]:
+        f = self.resolve_filters(f)
+        full = self._cached(f"tickets:{compact}:{f.cache_key()}", lambda: self._tickets_view(f, compact))
+        if page_size <= 0:
+            return full
+        page_size = min(page_size, 1000)
+        start = (max(page, 1) - 1) * page_size
+        return {**full, "page": max(page, 1), "page_size": page_size, "items": full["items"][start:start + page_size]}
+
+    def _tickets_view(self, f: Filters, compact: bool = False) -> Dict[str, Any]:
         a, r, _ = self.scope(f)
         t = self.ticket_table(a, r)
         if len(t):
             t = t.sort_values(["last_seen", "ticket_id"], ascending=[False, True])
+        if compact:
+            return {"total": int(len(t)), "filters": f.to_dict(), "items": records(t, [c for c in self.TICKET_COMPACT_COLS if c in t.columns])}
         cols = ["ticket_id", "work_status", "work_status_raw", "work_type", "work_type_raw", "dev_deployment",
                 "dev_deployment_raw", "prod_required", "prod_required_raw", "prod_deployment", "prod_deployment_raw",
                 "has_release", "release_date", "work_details", "ticket_link", "employee", "employees", "project",

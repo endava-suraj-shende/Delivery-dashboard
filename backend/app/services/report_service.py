@@ -102,14 +102,18 @@ def _fmt(v: Any) -> str:
 
 
 class ReportService:
-    def __init__(self, settings: Settings, engine: AnalyticsEngine, bus: EventBus) -> None:
+    def __init__(self, settings: Settings, engine: AnalyticsEngine, bus: EventBus, db_factory: Any = None,
+                 workspace: str = "real") -> None:
         self.settings = settings
         self.engine = engine
         self.bus = bus
-        self._registry: Dict[str, Dict[str, Any]] = {}
+        self._registry: Dict[str, Dict[str, Any]] = {}  # fallback when no database session factory is supplied
+        self._db = db_factory
+        self._workspace = workspace
 
     # ------------------------------------------------------------------ public
-    def generate(self, report_type: str, fmt: str, filters: Filters, target: Optional[str] = None) -> Dict[str, Any]:
+    def generate(self, report_type: str, fmt: str, filters: Filters, target: Optional[str] = None,
+                 created_by: Optional[str] = None) -> Dict[str, Any]:
         if report_type not in REPORT_TYPES:
             raise ValidationFailedError(f"Unknown report type '{report_type}'", {"allowed": list(REPORT_TYPES)})
         fmt = fmt.lower()
@@ -130,24 +134,61 @@ class ReportService:
         path.write_bytes(content)
         info = {"report_id": report_id, "report_type": report_type, "format": fmt, "file_name": name,
                 "size_bytes": len(content), "created_at": datetime.now().isoformat(), "target": target,
-                "period": data["period"]["label"], "path": str(path)}
-        self._registry[report_id] = info
+                "period": data["period"]["label"], "path": str(path), "created_by": created_by}
+        if self._db is not None:
+            from app.db.models import GeneratedReport
+            with self._db() as db:
+                db.add(GeneratedReport(id=report_id, report_type=report_type, format=fmt, file_name=name, path=str(path),
+                                       size_bytes=len(content), target=target, period=data["period"]["label"],
+                                       filters=filters.to_dict(), created_by=created_by, workspace=self._workspace))
+                db.commit()
+        else:
+            self._registry[report_id] = info
         self._prune()
         self.bus.publish(Events.REPORT_GENERATED, report_id=report_id, report_type=report_type, format=fmt)
         return {k: v for k, v in info.items() if k != "path"}
 
     def get(self, report_id: str) -> Dict[str, Any]:
-        info = self._registry.get(report_id)
+        if self._db is not None:
+            from app.db.models import GeneratedReport
+            with self._db() as db:
+                row = db.get(GeneratedReport, report_id)
+                info = {**row.to_dict(), "path": row.path} if row and row.workspace == self._workspace else None
+        else:
+            info = self._registry.get(report_id)
         if not info or not Path(info["path"]).exists():
             raise NotFoundError("Report not found or expired")
         return info
 
-    def list(self) -> List[Dict[str, Any]]:
-        return [{k: v for k, v in i.items() if k != "path"} for i in sorted(self._registry.values(), key=lambda x: x["created_at"], reverse=True)]
+    def list(self, created_by: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Newest first. `created_by` limits the history to one user's reports (delivery managers)."""
+        if self._db is not None:
+            from sqlalchemy import select
+            from app.db.models import GeneratedReport
+            q = select(GeneratedReport).where(GeneratedReport.workspace == self._workspace)
+            if created_by:
+                q = q.where(GeneratedReport.created_by == created_by)
+            with self._db() as db:
+                rows = db.execute(q.order_by(GeneratedReport.created_at.desc()).limit(500)).scalars().all()
+            return [r.to_dict() for r in rows if Path(r.path).exists()]
+        items = sorted(self._registry.values(), key=lambda x: x["created_at"], reverse=True)
+        return [{k: v for k, v in i.items() if k != "path"} for i in items if not created_by or i.get("created_by") == created_by]
 
     def _prune(self) -> None:
+        keep = max(self.settings.report_retention, 1)
+        if self._db is not None:
+            from sqlalchemy import select
+            from app.db.models import GeneratedReport
+            with self._db() as db:
+                rows = db.execute(select(GeneratedReport).where(GeneratedReport.workspace == self._workspace)
+                                  .order_by(GeneratedReport.created_at.desc())).scalars().all()
+                for old in rows[keep:]:
+                    Path(old.path).unlink(missing_ok=True)
+                    db.delete(old)
+                db.commit()
+            return
         items = sorted(self._registry.values(), key=lambda x: x["created_at"], reverse=True)
-        for old in items[self.settings.report_retention:]:
+        for old in items[keep:]:
             Path(old["path"]).unlink(missing_ok=True)
             self._registry.pop(old["report_id"], None)
 

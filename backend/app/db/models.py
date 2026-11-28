@@ -275,3 +275,26 @@ class AuditLog(Base):
     target: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     detail: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, index=True)
+
+
+class GeneratedReport(Base):
+    """Registry of generated report files so history survives restarts and can be scoped per user."""
+    __tablename__ = "generated_reports"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    report_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    format: Mapped[str] = mapped_column(String(8), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    target: Mapped[Optional[str]] = mapped_column(String(255))
+    period: Mapped[Optional[str]] = mapped_column(String(120))
+    filters: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
+    created_by: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False, index=True)
+    workspace: Mapped[str] = mapped_column(String(16), nullable=False, default="real", index=True)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"report_id": self.id, "report_type": self.report_type, "format": self.format, "file_name": self.file_name,
+                "size_bytes": self.size_bytes, "created_at": self.created_at.isoformat(), "target": self.target,
+                "period": self.period, "created_by": self.created_by}

@@ -1,4 +1,4 @@
-"""Authentication endpoints (sign-up, verification, login, password management)."""
+﻿"""Authentication endpoints (sign-up, verification, login, password management)."""
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -51,7 +51,7 @@ class ChangePassword(BaseModel):
 
 
 def _set_cookie(resp: Response, c: Container, token: str) -> None:
-    resp.set_cookie(c.settings.cookie_name, token, httponly=True, samesite="lax", secure=c.settings.cookie_secure,
+    resp.set_cookie(c.settings.cookie_name, token, httponly=True, samesite="lax", secure=c.settings.cookie_secure_effective,
                     max_age=c.settings.session_hours * 3600, path="/")
 
 

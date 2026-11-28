@@ -6,6 +6,7 @@
     python manage.py create-superuser --email a@b.com --name "Admin" --password '...'
     python manage.py create-demo-superuser     # superuser locked to synthetic demo data (stakeholder demos)
     python manage.py create-demo-dm            # delivery manager locked to synthetic demo data
+    python manage.py backup | list-backups | restore [file]   # SQLite backups (also nightly while running)
     python manage.py makemigrations -m "add x" # generate a new Alembic revision from model changes
     python manage.py db-status                 # show database URL and current revision
     python manage.py allow-domain example.com  # add an allowed sign-up domain
@@ -95,6 +96,38 @@ def cmd_create_demo_dm(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    from app.db.backup import backup_database, list_backups
+    s = _settings()
+    path = backup_database(s, args.label or "")
+    print(f"Backup written: {path}")
+    print(f"Kept {len(list_backups(s))} backup(s) in {s.backup_dir} (retention {s.backup_keep})")
+    return 0
+
+
+def cmd_list_backups(_: argparse.Namespace) -> int:
+    from app.db.backup import list_backups
+    for p in list_backups(_settings()):
+        print(f"{p.name:40} {p.stat().st_size/1024:8.0f} KB")
+    return 0
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from app.db.backup import list_backups, restore_database
+    s = _settings()
+    target = Path(args.backup) if args.backup else (list_backups(s)[0] if list_backups(s) else None)
+    if target is None:
+        print("No backup found"); return 1
+    if not args.yes:
+        ans = input(f"Restore {target.name} over the live database? The application must be stopped. [y/N] ")
+        if ans.strip().lower() != "y":
+            return 1
+    dst = restore_database(s, target)
+    print(f"Restored {target.name} -> {dst} (previous database kept as *.pre-restore-*.db)")
+    return 0
+
+
 def cmd_makemigrations(args: argparse.Namespace) -> int:
     from app.db.migrate import make_revision
     make_revision(_settings(), args.message)
@@ -135,6 +168,11 @@ def main() -> int:
     dd = sub.add_parser("create-demo-dm", help="delivery manager account locked to synthetic demo data")
     dd.add_argument("--email"); dd.add_argument("--name"); dd.add_argument("--password")
     dd.set_defaults(fn=cmd_create_demo_dm)
+    bk = sub.add_parser("backup", help="online SQLite backup into storage/backups")
+    bk.add_argument("--label"); bk.set_defaults(fn=cmd_backup)
+    sub.add_parser("list-backups", help="list available backups").set_defaults(fn=cmd_list_backups)
+    rs = sub.add_parser("restore", help="restore a backup (latest by default); stop the app first")
+    rs.add_argument("backup", nargs="?"); rs.add_argument("--yes", action="store_true"); rs.set_defaults(fn=cmd_restore)
     mk = sub.add_parser("makemigrations", help="autogenerate an Alembic revision")
     mk.add_argument("-m", "--message", required=True)
     mk.set_defaults(fn=cmd_makemigrations)

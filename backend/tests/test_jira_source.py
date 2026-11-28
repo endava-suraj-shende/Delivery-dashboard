@@ -24,7 +24,7 @@ def jira_mode(jira_settings, fake_jira, monkeypatch):  # noqa: F811
     monkeypatch.setattr(container_mod, "get_settings", lambda: jira_settings)
     from app.main import app as fastapi_app
     from tests.conftest import login_as_admin
-    with TestClient(fastapi_app) as c:
+    with TestClient(fastapi_app, headers={"Origin": "http://testserver"}) as c:
         login_as_admin(c)
         yield c, container_mod.get_container()
     container_mod.get_container.cache_clear()
@@ -114,7 +114,7 @@ def test_board_credentials_encrypted_and_people_filter(settings, fake_jira, monk
     monkeypatch.setattr(container_mod, "get_settings", lambda: settings)
     from app.main import app as fastapi_app
     from tests.conftest import login_as_admin
-    with TestClient(fastapi_app) as client:
+    with TestClient(fastapi_app, headers={"Origin": "http://testserver"}) as client:
         login_as_admin(client)
         assert client.get("/api/v1/jira/connections/credentials").json()["configured"] is False
         # add a board with its own credentials (no default credentials at all)

@@ -6,6 +6,7 @@ import { EmployeeSnapshotTable } from '@/components/common/EmployeeSnapshotTable
 import { ChartCard, DonutChart, NamedBarChart, StackedBarChart, TrendChart, STATUS_SERIES, TYPE_SERIES, CHART_HEIGHT_TALL } from '@/components/charts'
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { InsightsPanel } from '@/components/common/InsightsPanel'
+import { NarrativeCard } from '@/components/common/NarrativeCard'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { TicketDialog } from '@/components/common/Tables'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -70,6 +71,8 @@ export default function ExecutivePage() {
               />
             )}
           </KpiGrid>
+
+          <NarrativeCard />
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <ChartCard title="Overall work status" description="Unique tickets by latest status. Click to filter.">

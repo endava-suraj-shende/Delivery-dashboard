@@ -47,7 +47,9 @@ class Container:
         self.store = InMemoryDataStore(self.normalizer)
         self.excel = ExcelService(settings, self.store, bus)
         self.analytics = AnalyticsEngine(self.store, self.normalizer, settings.default_period_days)
-        self.reports = ReportService(settings, self.analytics, bus)
+        self.reports = ReportService(settings, self.analytics, bus, db_factory=self.db)
+        from app.services.narrative_service import NarrativeService
+        self.narrative = NarrativeService(self.analytics)
         self.jira_pool = JiraClientPool(settings.jira_email, settings.jira_api_token, settings.jira_timeout_seconds,
                                         settings.jira_cache_minutes)
         self.jira_boards = JiraBoardRegistry(settings.jira_boards_path, self.jira_pool, self.secrets,

@@ -141,6 +141,10 @@ def settings(tmp_path: Path, sample_data_dir: Path) -> Settings:
         database_url=f"sqlite:///{(tmp_path / 'test.db').as_posix()}",
         environment="test",
         resend_api_key="",
+        cookie_secure=False,  # TestClient speaks plain http
+        snapshot_dir=tmp_path / "storage" / "snapshot",
+        backup_dir=tmp_path / "storage" / "backups",
+        rate_limit_auth_per_minute=1000,  # individual tests exercise the limiter explicitly
     )
 
 
@@ -187,7 +191,8 @@ def client(settings: Settings, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(container_mod, "get_settings", lambda: settings)
     from app.main import app as fastapi_app
 
-    with TestClient(fastapi_app) as c:
+    # browsers always send Origin on non-GET fetches; the CSRF middleware requires it for cookie sessions
+    with TestClient(fastapi_app, headers={"Origin": "http://testserver"}) as c:
         login_as_admin(c)  # existing API tests run as superuser
         yield c
     container_mod.get_container.cache_clear()
@@ -197,7 +202,7 @@ def client(settings: Settings, monkeypatch: pytest.MonkeyPatch):
 def anon(client):
     """Same app, no session cookie."""
     from fastapi.testclient import TestClient
-    return TestClient(client.app)
+    return TestClient(client.app, headers={"Origin": "http://testserver"})
 
 
 ALL = {"start_date": date(2000, 1, 1).isoformat(), "end_date": date(2100, 1, 1).isoformat()}

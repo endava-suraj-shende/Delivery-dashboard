@@ -12,7 +12,8 @@ ALL = {"start_date": "2000-01-01", "end_date": "2100-01-01"}
 def test_status_and_health(client):
     r = client.get("/health")
     assert r.status_code == 200 and r.json()["loaded"] is True
-    s = client.get("/api/v1/excel/status").json()
+    r = client.get("/api/v1/excel/status"); s = r.json()
+    assert r.status_code == 200, r.text
     assert s["file_count"] == 5 and s["activity_count"] == 12
 
 
@@ -187,3 +188,38 @@ def test_employee_counts_follow_board_filter(client):
     scoped = client.get("/api/v1/meta/dimensions", params={"jira_board": boards[0]}).json()
     assert set(scoped["employees"]) == set(lst["all"]) and len(scoped["employees"]) < len(dims["employees"])
     assert scoped["jira_boards"] == dims["jira_boards"]  # board list itself stays complete
+
+
+def test_narrative_endpoints(client):
+    r = client.get("/api/v1/dashboard/narrative", params=ALL)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["headline"] and d["paragraphs"][0]["kind"] == "headline"
+    assert str(d["facts"]["completed"]) in d["headline"]
+    assert isinstance(d["flags"], list) and all({"code", "severity", "text"} <= set(fl) for fl in d["flags"])
+    name = client.get("/api/v1/employees", params=ALL).json()["items"][0]["employee"]
+    e = client.get(f"/api/v1/employees/{name}/narrative", params=ALL).json()
+    assert e["scope"] == name and any(p["kind"] == "people" for p in e["paragraphs"])
+
+
+def test_tickets_pagination_and_compact(client):
+    full = client.get("/api/v1/jira/tickets", params={**ALL, "compact": "false"}).json()
+    page = client.get("/api/v1/jira/tickets", params={**ALL, "page": 1, "page_size": 2}).json()
+    assert page["total"] == full["total"] and len(page["items"]) == min(2, full["total"]) and page["page_size"] == 2
+    if full["items"]:
+        assert "report_count" in full["items"][0] and "report_count" not in page["items"][0]
+        assert "work_status_raw" in page["items"][0]
+
+
+def test_report_history_persists_and_is_scoped(client):
+    r = client.post("/api/v1/reports/management", json={"report_type": "management", "format": "csv", "filters": ALL})
+    assert r.status_code == 200, r.text
+    rid = r.json()["report_id"]
+    items = client.get("/api/v1/reports").json()["items"]
+    assert any(i["report_id"] == rid for i in items) and items[0]["created_by"]
+    # survives a new ReportService instance (DB-backed registry)
+    import app.services.container as cm
+    from app.services.report_service import ReportService
+    cont = cm.get_container()
+    fresh = ReportService(cont.settings, cont.analytics, cont.bus, db_factory=cont.db)
+    assert fresh.get(rid)["report_id"] == rid

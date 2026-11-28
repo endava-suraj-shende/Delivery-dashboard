@@ -1,0 +1,24 @@
+services:
+  dashboard:
+    build: .
+    image: delivery-dashboard:latest
+    container_name: delivery-dashboard
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env            # EDD_PUBLIC_URL, EDD_AUTH_SECRET, EDD_RESEND_API_KEY, EDD_BOOTSTRAP_SUPERUSER_*, Jira defaults ...
+    environment:
+      # Behind an HTTPS reverse proxy set EDD_PUBLIC_URL=https://... ; cookies become Secure automatically (environment=production)
+      EDD_PUBLIC_URL: ${EDD_PUBLIC_URL:-http://localhost:8000}
+    volumes:
+      - dashboard-data:/data           # SQLite, uploads, reports, snapshot, backups, encrypted config
+      - ./Data:/data/Data:ro           # optional: bi-weekly workbooks (Excel mode)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+
+volumes:
+  dashboard-data:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import pickle
 import threading
 import time
 import uuid
@@ -145,9 +146,58 @@ class DataSourceService:
                 self.bus.publish(Events.DATA_LOADED, **{k: v for k, v in entry.items() if k != "failures"})
                 log.info("Loaded from %s: %d issues -> %d activities, %d releases in %dms", mode, stats.issues,
                          len(self.store.activities()), len(self.store.releases()), duration)
+                self._write_snapshot(reports, origins, info, stats)
             finally:
                 self._loading = False
         return self.status()
+
+    # ------------------------------------------------------------------ snapshot (fast restarts)
+    @property
+    def _snapshot_path(self) -> Path:
+        return Path(self.settings.snapshot_dir) / "data_snapshot.pkl"
+
+    def _boards_key(self) -> str:
+        return ",".join(sorted(f"{b.id}:{b.enabled}:{len(b.people or [])}" for b in self.registry.list()))
+
+    def _write_snapshot(self, reports, origins, info: LoadInfo, stats) -> None:
+        """Persist the parsed result so the next process start can serve data immediately (stale-while-revalidate)."""
+        try:
+            self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {"version": 1, "mode": self.mode, "boards_key": self._boards_key(), "saved_at": datetime.now().isoformat(),
+                       "lookback_days": self.jira_source.lookback_days, "reports": reports, "origins": origins, "info": info,
+                       "stats": stats, "assignees": dict(self.jira_source._assignees_by_board)}
+            tmp = self._snapshot_path.with_suffix(".tmp")
+            with tmp.open("wb") as fh:
+                pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            tmp.replace(self._snapshot_path)
+        except Exception:  # never let a snapshot problem break a successful load
+            log.exception("Could not write data snapshot")
+
+    def load_from_snapshot(self) -> bool:
+        """Serve the last successful Jira load straight away; the regular refresh then replaces it in the background."""
+        path = self._snapshot_path
+        if self.mode == "excel" or not path.exists():
+            return False
+        try:
+            with path.open("rb") as fh:
+                payload = pickle.load(fh)
+            if payload.get("version") != 1 or payload.get("mode") != self.mode or payload.get("boards_key") != self._boards_key() \
+                    or payload.get("lookback_days") != self.jira_source.lookback_days:
+                log.info("Data snapshot ignored (configuration changed)")
+                return False
+            started = time.perf_counter()
+            with self._lock:
+                self.store.replace(payload["reports"], payload["origins"], payload["info"])
+                self.jira_source.stats = payload["stats"]
+                self.jira_source._assignees_by_board = payload.get("assignees", {})
+            self.bus.publish(Events.DATA_LOADED, reason="snapshot", source=self.mode, parsed=len(payload["reports"]),
+                             activities=int(len(self.store.activities())), releases=int(len(self.store.releases())))
+            log.info("Served data snapshot from %s (%d reports) in %dms; refreshing from Jira in the background",
+                     payload["saved_at"], len(payload["reports"]), int((time.perf_counter() - started) * 1000))
+            return True
+        except Exception:
+            log.exception("Could not read data snapshot; loading from source")
+            return False
 
     def signature(self) -> str:
         mode = self.mode

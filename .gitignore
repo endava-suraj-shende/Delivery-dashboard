@@ -43,3 +43,4 @@ storage/app.db*
 storage/*.db*
 storage/demo/
 storage/backups/
+storage/snapshot/

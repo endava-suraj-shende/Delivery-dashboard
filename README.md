@@ -332,6 +332,30 @@ flowchart LR
 
 Sign-up is limited to allowed domains (`EDD_DEFAULT_ALLOWED_DOMAINS`, default `endava.com`); the superuser can add domains or individual addresses in *User Management → Registration*.
 
+### Perimeter hardening (on by default)
+
+* **CSRF**: every state-changing `/api` request with a cookie session must carry an `Origin`/`Referer` from an allowed origin
+  (`EDD_CORS_ORIGINS`, `EDD_PUBLIC_URL` or the API host itself); browsers always send it, cross-site forms get `403`. `EDD_CSRF_PROTECTION=0` disables.
+* **Rate limiting** per client IP: `EDD_RATE_LIMIT_AUTH_PER_MINUTE` (default 10) on login / sign-up / password reset / board-code redemption,
+  `EDD_RATE_LIMIT_UPLOAD_PER_MINUTE` (default 6) on uploads -> `429` with `Retry-After`. In-process; put limits at the proxy for multi-node setups.
+* **Security headers**: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
+  `Strict-Transport-Security` when cookies are secure; every response carries an `X-Request-ID` for log correlation.
+* **Cookies** are `Secure` automatically outside `EDD_ENVIRONMENT=local` (override with `EDD_COOKIE_SECURE`).
+* **Uploads** are streamed with a hard size cap and content-sniffed (`PK` zip header for .xlsx/.xlsm, OLE header for .xls).
+* **Dependencies** are pinned in `backend/requirements.lock` and `frontend/package-lock.json`; CI runs `pip-audit` and `npm audit`.
+
+### Backups, snapshots and fast restarts
+
+```bash
+python manage.py backup            # online SQLite backup -> storage/backups/app_<timestamp>.db (also nightly at EDD_BACKUP_HOUR_UTC, keeps EDD_BACKUP_KEEP)
+python manage.py list-backups
+python manage.py restore [file]    # stop the app first; latest backup by default, previous DB kept as *.pre-restore-*.db
+```
+
+After every successful Jira load the parsed data is written to `storage/snapshot/` and served immediately on the next start
+(stale-while-revalidate: the live refresh runs in the background). Measured: data available **4 s** after process start instead of 50 s.
+`/health` now reports database reachability and data-loaded state (`ok` | `degraded` | `error`).
+
 ### Moving to a new environment
 
 ```bash

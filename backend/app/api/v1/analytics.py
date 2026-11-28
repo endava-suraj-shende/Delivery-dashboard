@@ -105,7 +105,7 @@ def employee_performance(name: str, f: Filters = Depends(filters), c: Container 
             "previous": {"period": prev["period"], "kpis": prev["kpis"], "trend": prev["charts"]["trend"]},
             "performance": {"current": cur_row, "previous": prev_row, "metrics": metric_rows(cur_row or {}, prev_row),
                             "bands": BANDS, "rules": PERFORMANCE_RULES},
-            "tickets": c.analytics.tickets_view(ff)["items"], "releases": c.analytics.releases_view(ff)["items"]}
+            "tickets": c.analytics.tickets_view(ff, compact=True)["items"], "releases": c.analytics.releases_view(ff)["items"]}
 
 
 # ---------------------------------------------------------------- projects
@@ -120,7 +120,7 @@ def project_summary(name: str, f: Filters = Depends(filters), c: Container = Dep
     name = _resolve_name(c.analytics.dimension_values()["projects"], name, "Project")
     ff = _with(f, project=[name])
     ov = c.analytics.overview(ff)
-    return {**ov, "project": name, "tickets": c.analytics.tickets_view(ff)["items"],
+    return {**ov, "project": name, "tickets": c.analytics.tickets_view(ff, compact=True)["items"],
             "releases": c.analytics.releases_view(ff)["items"]}
 
 
@@ -178,7 +178,7 @@ def sprint_detail(name: str, f: Filters = Depends(filters), c: Container = Depen
               and (s.get("start_date") or "") < (row.get("start_date") or "~")]
     prev = max(closed, key=lambda s: s.get("start_date") or "") if closed else None
     return {**ov, "sprint": row, "previous_sprint": prev,
-            "tickets": c.analytics.tickets_view(ff)["items"], "releases": c.analytics.releases_view(ff)["items"]}
+            "tickets": c.analytics.tickets_view(ff, compact=True)["items"], "releases": c.analytics.releases_view(ff)["items"]}
 
 
 # ---------------------------------------------------------------- jira
@@ -198,9 +198,22 @@ def jira_status_distribution(f: Filters = Depends(filters), c: Container = Depen
             "by_board": ch["status_by_board"], "trend": ch["trend"]}
 
 
+@dashboard.get("/narrative")
+def dashboard_narrative(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    """Rule-based narrative summary + anomaly flags for the current filter scope (paste-ready for client updates)."""
+    return c.narrative.summary(f)
+
+
+@employees.get("/{name}/narrative")
+def employee_narrative(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+    return c.narrative.summary(_with(f, employee=[name]), employee=name)
+
+
 @jira.get("/tickets")
-def jira_tickets(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
-    return c.analytics.tickets_view(f)
+def jira_tickets(f: Filters = Depends(filters), c: Container = Depends(loaded_container),
+                 page: int = Query(0, ge=0, description="0 = all"), page_size: int = Query(0, ge=0, le=1000),
+                 compact: bool = Query(True)) -> Dict[str, Any]:
+    return c.analytics.tickets_view(f, compact=compact, page=page, page_size=page_size)
 
 
 @jira.get("/tickets/{ticket_id}")
@@ -219,7 +232,10 @@ def dev_summary(f: Filters = Depends(filters), c: Container = Depends(loaded_con
     return {"period": ov["period"], "filters": ov["filters"], "kpis": ov["kpis"], "distribution": ch["dev_deployment"],
             "by_employee": ch["dev_by_employee"], "by_project": ch["dev_by_project"],
             "by_application": ch["dev_by_application"], "trend": ch["trend"],
-            "items": c.analytics.activities_view(f, 1, 5000)["items"]}
+            "items": c.analytics.activities_view(f, 1, 2000, deployment_only=True,
+                                                 columns=["activity_id", "report_date", "employee", "application", "jira_board",
+                                                          "ticket_id", "ticket_link", "work_type", "work_status", "dev_deployment",
+                                                          "dev_deployment_raw", "environment", "sprint"])["items"]}
 
 
 @deployment.get("/production/summary")
@@ -263,7 +279,7 @@ def executive(f: Filters = Depends(filters), c: Container = Depends(loaded_conta
 @dashboard.get("/team")
 def team(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
-    return {**ov, "tickets": c.analytics.tickets_view(f)["items"], "releases": c.analytics.releases_view(f)["items"]}
+    return {**ov, "tickets": c.analytics.tickets_view(f, compact=True)["items"], "releases": c.analytics.releases_view(f)["items"]}
 
 
 @dashboard.get("/employee")

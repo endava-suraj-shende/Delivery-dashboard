@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast'
 import { PageHeader } from '@/components/common/PageHeader'
 import { DataTable } from '@/components/common/DataTable'
 import { EmptyState } from '@/components/common/States'
+import { useConfirm } from '@/components/common/ConfirmDialog'
 import { Notice, SettingsCard, StatStrip, StatTile } from '@/components/common/Settings'
 import { useSession } from '@/hooks/useSession'
 import { adminApi, ROLE_LABEL, STATUS_LABEL, type AccountStatus, type AuthCode, type AuthUser, type DmOverview, type Role } from '@/services/authApi'
@@ -68,6 +69,7 @@ const IconBtn = ({ title, onClick, className, children }: { title: string; onCli
 export default function UsersAdminPage() {
   const qc = useQueryClient()
   const { toast } = useToast()
+  const confirm = useConfirm()
   const { user: me } = useSession()
 
   const users = useQuery({ queryKey: ['admin-users'], queryFn: () => adminApi.users(), refetchInterval: 30_000 })
@@ -158,11 +160,11 @@ export default function UsersAdminPage() {
           {u.status === 'rejected' && <IconBtn title="Approve anyway" className="text-emerald-700" onClick={() => approve.mutate({ id: u.id })}><UserCheck className="h-4 w-4" /></IconBtn>}
           {pending && <IconBtn title="Reject" className="text-red-700" onClick={() => setReject(u)}><UserX className="h-4 w-4" /></IconBtn>}
           {u.role === 'guest' && u.status !== 'rejected' && <IconBtn title="Extend guest access" onClick={() => { setExtendUser(u); setExtendDays(5) }}><CalendarPlus className="h-4 w-4" /></IconBtn>}
-          {u.role === 'admin' && u.status === 'active' && !self && <IconBtn title={u.is_superuser ? 'Revoke superuser access' : 'Make superuser'} className={u.is_superuser ? 'text-violet-700' : ''} onClick={() => superuser.mutate({ id: u.id, enabled: !u.is_superuser })}><Crown className="h-4 w-4" /></IconBtn>}
-          {u.status === 'active' && !self && <IconBtn title="Issue temporary password" onClick={() => tempPw.mutate(u.id)}><KeyRound className="h-4 w-4" /></IconBtn>}
-          {u.status === 'active' && !self && <IconBtn title="Disable account" onClick={() => toggle.mutate({ id: u.id, enable: false })}><Ban className="h-4 w-4" /></IconBtn>}
+          {u.role === 'admin' && u.status === 'active' && !self && <IconBtn title={u.is_superuser ? 'Revoke superuser access' : 'Make superuser'} className={u.is_superuser ? 'text-violet-700' : ''} onClick={async () => { if (await confirm({ title: u.is_superuser ? `Revoke superuser access from ${u.email}?` : `Make ${u.email} a superuser?`, description: u.is_superuser ? 'They keep admin read access but lose user management and configuration rights.' : 'Superusers can manage users, auth codes, boards and all settings.', confirmLabel: u.is_superuser ? 'Revoke' : 'Grant', destructive: u.is_superuser })) superuser.mutate({ id: u.id, enabled: !u.is_superuser }) }}><Crown className="h-4 w-4" /></IconBtn>}
+          {u.status === 'active' && !self && <IconBtn title="Issue temporary password" onClick={async () => { if (await confirm({ title: `Issue a temporary password for ${u.email}?`, description: 'Their current password stops working immediately and they must set a new one at next sign-in.', confirmLabel: 'Issue password' })) tempPw.mutate(u.id) }}><KeyRound className="h-4 w-4" /></IconBtn>}
+          {u.status === 'active' && !self && <IconBtn title="Disable account" onClick={async () => { if (await confirm({ title: `Disable ${u.email}?`, description: 'The user is signed out everywhere and cannot sign in until re-enabled.', confirmLabel: 'Disable account', destructive: true })) toggle.mutate({ id: u.id, enable: false }) }}><Ban className="h-4 w-4" /></IconBtn>}
           {u.status === 'disabled' && <IconBtn title="Enable account" className="text-emerald-700" onClick={() => toggle.mutate({ id: u.id, enable: true })}><CheckCircle2 className="h-4 w-4" /></IconBtn>}
-          {!self && <IconBtn title="Delete user" className="text-muted-foreground hover:text-red-600" onClick={() => { if (confirm(`Delete ${u.email}? This cannot be undone.`)) remove.mutate(u.id) }}><Trash2 className="h-4 w-4" /></IconBtn>}
+          {!self && <IconBtn title="Delete user" className="text-muted-foreground hover:text-red-600" onClick={async () => { if (await confirm({ title: `Delete ${u.email}?`, description: 'The account, its board grants and upload history are removed permanently.', confirmLabel: 'Delete user', destructive: true })) remove.mutate(u.id) }}><Trash2 className="h-4 w-4" /></IconBtn>}
         </div>
       )
     } },
@@ -202,7 +204,7 @@ export default function UsersAdminPage() {
     { id: 'actions', header: '', size: 110, enableSorting: false, meta: { align: 'right' }, cell: ({ row }) => (
       <div className="flex justify-end gap-0.5">
         <IconBtn title={row.original.active ? 'Revoke code' : 'Enable code'} onClick={() => toggleCode.mutate(row.original)}>{row.original.active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4 text-emerald-700" />}</IconBtn>
-        <IconBtn title="Delete code" className="text-muted-foreground hover:text-red-600" onClick={() => { if (confirm('Delete this code?')) deleteCode.mutate(row.original.id) }}><Trash2 className="h-4 w-4" /></IconBtn>
+        <IconBtn title="Delete code" className="text-muted-foreground hover:text-red-600" onClick={async () => { if (await confirm({ title: 'Delete this auth code?', description: 'Anyone holding the code can no longer use it. Existing accounts are unaffected.', confirmLabel: 'Delete code', destructive: true })) deleteCode.mutate(row.original.id) }}><Trash2 className="h-4 w-4" /></IconBtn>
       </div>
     ) },
   ], [toggleCode, deleteCode])
@@ -216,7 +218,7 @@ export default function UsersAdminPage() {
     { id: 'state', header: 'State', size: 100, accessorFn: (r) => (r.usable ? 'active' : 'revoked'), cell: ({ row }) => <Pill className={row.original.usable ? STATUS_TONE.active : STATUS_TONE.disabled}>{row.original.usable ? 'Active' : 'Revoked'}</Pill> },
     { id: 'actions', header: '', size: 110, enableSorting: false, meta: { align: 'right' }, cell: ({ row }) => (
       <div className="flex justify-end gap-0.5">
-        <IconBtn title="Regenerate code (old code stops working)" onClick={() => row.original.board_id && regen.mutate(row.original.board_id)}><RefreshCw className="h-4 w-4" /></IconBtn>
+        <IconBtn title="Regenerate code (old code stops working)" onClick={async () => { if (row.original.board_id && await confirm({ title: 'Regenerate this board code?', description: 'The current code stops working immediately; delivery managers who already redeemed it keep their access.', confirmLabel: 'Regenerate' })) regen.mutate(row.original.board_id) }}><RefreshCw className="h-4 w-4" /></IconBtn>
         <IconBtn title={row.original.active ? 'Revoke code' : 'Enable code'} onClick={() => toggleCode.mutate(row.original)}>{row.original.active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4 text-emerald-700" />}</IconBtn>
       </div>
     ) },
@@ -230,7 +232,7 @@ export default function UsersAdminPage() {
         {row.original.granted.map((b) => (
           <Badge key={b.id} variant="secondary" className="gap-1 pr-1" title={b.since ? `since ${fmtDate(b.since, { day: '2-digit', month: 'short' })}` : undefined}>
             <Link2 className="h-3 w-3" /> {b.label}
-            <button className="rounded p-0.5 hover:bg-foreground/10" title="Revoke access" aria-label="Revoke" onClick={() => revoke.mutate({ userId: row.original.user.id, boardId: b.id })}><XCircle className="h-3 w-3" /></button>
+            <button className="rounded p-0.5 hover:bg-foreground/10" title="Revoke access" aria-label="Revoke" onClick={async () => { if (await confirm({ title: `Revoke ${b.label} from ${row.original.user.email}?`, description: 'They lose access to this board\'s dashboards immediately.', confirmLabel: 'Revoke access', destructive: true })) revoke.mutate({ userId: row.original.user.id, boardId: b.id }) }}><XCircle className="h-3 w-3" /></button>
           </Badge>
         ))}
       </div>
@@ -327,7 +329,7 @@ export default function UsersAdminPage() {
             <div className="grid gap-6 md:grid-cols-2">
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Allowed domains</p>
-                <div className="flex min-h-8 flex-wrap gap-2">{policy.data?.domains.map((r) => <Badge key={r.id} variant="secondary" className="gap-1 pr-1">@{r.value}<button className="rounded p-0.5 hover:bg-foreground/10" onClick={() => removeRule.mutate(r.id)} aria-label="Remove"><XCircle className="h-3 w-3" /></button></Badge>)}</div>
+                <div className="flex min-h-8 flex-wrap gap-2">{policy.data?.domains.map((r) => <Badge key={r.id} variant="secondary" className="gap-1 pr-1">@{r.value}<button className="rounded p-0.5 hover:bg-foreground/10" onClick={async () => { if (await confirm({ title: `Remove ${r.value} from the allow-list?`, description: 'New sign-ups from it will be refused; existing accounts are unaffected.', confirmLabel: 'Remove', destructive: true })) removeRule.mutate(r.id) }} aria-label="Remove"><XCircle className="h-3 w-3" /></button></Badge>)}</div>
                 <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (newDomain.trim()) addRule.mutate({ kind: 'domain', value: newDomain.trim() }) }}>
                   <Input value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com" className="h-9" />
                   <Button type="submit" size="sm" variant="outline" className="h-9" disabled={addRule.isPending}>Add domain</Button>
@@ -335,7 +337,7 @@ export default function UsersAdminPage() {
               </div>
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Allow-listed addresses</p>
-                <div className="flex min-h-8 flex-wrap gap-2">{policy.data?.emails.length ? policy.data.emails.map((r) => <Badge key={r.id} variant="secondary" className="gap-1 pr-1">{r.value}<button className="rounded p-0.5 hover:bg-foreground/10" onClick={() => removeRule.mutate(r.id)} aria-label="Remove"><XCircle className="h-3 w-3" /></button></Badge>) : <span className="text-xs text-muted-foreground">None</span>}</div>
+                <div className="flex min-h-8 flex-wrap gap-2">{policy.data?.emails.length ? policy.data.emails.map((r) => <Badge key={r.id} variant="secondary" className="gap-1 pr-1">{r.value}<button className="rounded p-0.5 hover:bg-foreground/10" onClick={async () => { if (await confirm({ title: `Remove ${r.value} from the allow-list?`, description: 'New sign-ups from it will be refused; existing accounts are unaffected.', confirmLabel: 'Remove', destructive: true })) removeRule.mutate(r.id) }} aria-label="Remove"><XCircle className="h-3 w-3" /></button></Badge>) : <span className="text-xs text-muted-foreground">None</span>}</div>
                 <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (newEmail.trim()) addRule.mutate({ kind: 'email', value: newEmail.trim() }) }}>
                   <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="partner@external.com" className="h-9" type="email" />
                   <Button type="submit" size="sm" variant="outline" className="h-9" disabled={addRule.isPending}>Allow address</Button>

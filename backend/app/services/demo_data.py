@@ -437,7 +437,9 @@ class DemoWorkspace:
         self.store = InMemoryDataStore(self.normalizer)
         self.excel = ExcelService(s, self.store, self.bus)
         self.analytics = AnalyticsEngine(self.store, self.normalizer, s.default_period_days)
-        self.reports = ReportService(s, self.analytics, self.bus)
+        self.reports = ReportService(s, self.analytics, self.bus, db_factory=self.db, workspace="demo")
+        from app.services.narrative_service import NarrativeService
+        self.narrative = NarrativeService(self.analytics)
         self.jira_pool = JiraClientPool("demo@example.com", "demo-token", 5, 60)
         self.jira_boards = _DemoRegistry(s.jira_boards_path, self.jira_pool, self.fake, repo=BoardRepo(self.db), owners=owners)
         with self.db() as dbs:

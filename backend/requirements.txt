@@ -1,3 +1,4 @@
+# Direct dependencies (minimum versions). Reproducible installs: pip install -r requirements.lock
 fastapi>=0.110
 uvicorn[standard]>=0.29
 pydantic>=2.6

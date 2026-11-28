@@ -183,10 +183,25 @@ async def validate(body: ValidateRequest, c: Container = Depends(loaded_containe
     return c.excel.validate(body.file_id, body.sheet_name, body.column_overrides)
 
 
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Stream the upload in chunks and stop as soon as the configured limit is exceeded."""
+    from app.core.exceptions import InvalidFileError
+    chunks, total = [], 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise InvalidFileError(f"File exceeds {limit // (1024 * 1024)} MB limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/upload")
 async def upload(file: UploadFile = File(...), replace: bool = Query(False), c: Container = Depends(_ws),
                  user: User = Depends(active_user), db: Session = Depends(workspace_db)) -> Dict[str, Any]:
-    content = await file.read()
+    content = await _read_capped(file, c.settings.max_upload_bytes)
     result = c.excel.save_upload(file.filename or "upload.xlsx", content, replace=replace)
     if getattr(c, "upload_owners", None) is not None and result.get("file_name"):
         owners = _owners(c)

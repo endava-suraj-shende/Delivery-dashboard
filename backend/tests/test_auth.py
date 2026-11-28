@@ -136,7 +136,7 @@ def test_password_reset_and_temporary_password(client: TestClient, anon: TestCli
     uid = next(u["id"] for u in client.get("/api/v1/admin/users").json()["items"] if u["email"] == "reset@endava.com")
     r = client.post(f"/api/v1/admin/users/{uid}/temporary-password")
     temp = r.json()["temporary_password"]
-    fresh = TestClient(client.app)
+    fresh = TestClient(client.app, headers={"Origin": "http://testserver"})
     assert _login(fresh, "reset@endava.com", temp).status_code == 200
     assert fresh.get("/api/v1/excel/status").status_code == 403  # must change password first
     r = fresh.post("/api/v1/auth/change-password", json={"current_password": temp, "password": "Final-Pass-000!", "confirm_password": "Final-Pass-000!"})
@@ -180,7 +180,7 @@ def test_auth_code_skips_verification_and_wrong_code_is_rejected(client: TestCli
     # usage is counted; revoked codes stop working
     assert next(c for c in client.get("/api/v1/admin/codes").json()["items"] if c["id"] == code["id"])["uses"] == 1
     client.post(f"/api/v1/admin/codes/{code['id']}/revoke")
-    r = TestClient(client.app).post("/api/v1/auth/signup", json={"name": "Late", "email": "late@endava.com", "password": PW, "confirm_password": PW,
+    r = TestClient(client.app, headers={"Origin": "http://testserver"}).post("/api/v1/auth/signup", json={"name": "Late", "email": "late@endava.com", "password": PW, "confirm_password": PW,
                                                                   "requested_role": "employee", "auth_code": code["code"]})
     assert r.status_code == 400 and r.json()["message"] == "Auth code is wrong"
 
@@ -301,7 +301,7 @@ def test_board_code_created_on_link_and_redeemable(client: TestClient, anon: Tes
     listed = [c for c in client.get("/api/v1/admin/codes").json()["items"] if c["kind"] == "board"]
     assert listed and listed[0]["code"] == bcode and listed[0]["board_owner"] == "Test User"
     # DM B redeems it on Jira Connections and now sees the board (read-only)
-    dm_b = TestClient(client.app)
+    dm_b = TestClient(client.app, headers={"Origin": "http://testserver"})
     _signup(dm_b, "dm.b@endava.com", "dm", code=_code(client, "dm")["code"])
     _login(dm_b, "dm.b@endava.com")
     assert dm_b.get("/api/v1/jira/connections/boards").json()["items"] == []
@@ -322,7 +322,7 @@ def test_superuser_grants_and_revokes_boards_and_regenerates_code(client: TestCl
     bid, old_code = r.json()["id"], r.json()["board_code"]
     assert anon.get("/api/v1/auth/me").json()["user"]["board_count"] == 1
 
-    other = TestClient(client.app)
+    other = TestClient(client.app, headers={"Origin": "http://testserver"})
     _signup(other, "dm.other@endava.com", "dm", code=_code(client, "dm")["code"])
     _login(other, "dm.other@endava.com")
     uid = other.get("/api/v1/auth/me").json()["user"]["id"]

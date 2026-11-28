@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { dashboardApi, excelApi, metaApi } from '@/services/api'
+import { dashboardApi, employeeApi, excelApi, metaApi } from '@/services/api'
 import { useFilters } from '@/hooks/useFilters'
 
 export function useDataStatus() {
@@ -29,4 +29,13 @@ export function useTeam() {
 export function useInvalidateAll() {
   const qc = useQueryClient()
   return () => qc.invalidateQueries()
+}
+
+export function useNarrative(employee?: string) {
+  const { queryString } = useFilters()
+  return useQuery({
+    queryKey: ['narrative', employee ?? '*', queryString],
+    queryFn: () => (employee ? employeeApi.narrative(employee, queryString) : dashboardApi.narrative(queryString)),
+    placeholderData: (p) => p,
+  })
 }

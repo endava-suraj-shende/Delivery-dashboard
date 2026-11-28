@@ -8,6 +8,7 @@ import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/Pa
 import { ErrorState, LoadingState, EmptyState } from '@/components/common/States'
 import { ActivitiesTable, ReleasesTable, TicketDialog, TicketsTable } from '@/components/common/Tables'
 import { InsightsPanel } from '@/components/common/InsightsPanel'
+import { NarrativeCard } from '@/components/common/NarrativeCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -70,6 +71,7 @@ export default function EmployeeDetailPage() {
               </CardContent>
             </Card>
           )}
+          <NarrativeCard employee={name} />
           <KpiGrid cols={6}>
             <KpiCard label="Unique Jira tickets" value={d.kpis.total_tickets} icon={<Ticket className="h-4 w-4" />} tone="blue" previous={d.previous_kpis?.total_tickets} compact />
             <KpiCard label="Completed" value={d.kpis.completed_tickets} icon={<CheckCircle2 className="h-4 w-4" />} tone="green" previous={d.previous_kpis?.completed_tickets} compact onClick={() => toggleValue('status', 'completed')} active={filters.status.includes('completed')} />

@@ -153,8 +153,20 @@ export interface FileDetail {
   kt_items: Record<string, unknown>[]
 }
 
+export interface NarrativeFlag { code: string; severity: 'danger' | 'warning' | 'info'; text: string; value: number | string | null; link: { type: string; value: string } | null }
+export interface Narrative {
+  period: { label: string }
+  scope: string
+  headline: string
+  paragraphs: { kind: 'headline' | 'delivery' | 'releases' | 'people' | 'risks' | 'next'; text: string }[]
+  flags: NarrativeFlag[]
+  facts: Record<string, number | string | null>
+  generated_at: string
+}
+
 export const dashboardApi = {
   executive: (qs: string) => api.get<ExecutiveData>(`/dashboard/executive${q(qs)}`).then((r) => r.data),
+  narrative: (qs: string) => api.get<Narrative>(`/dashboard/narrative${q(qs)}`).then((r) => r.data),
   team: (qs: string) => api.get<TeamData>(`/dashboard/team${q(qs)}`).then((r) => r.data),
   activities: (qs: string, page = 1, pageSize = 100) =>
     api.get<Paged<Activity>>(`/dashboard/activities${q(qs, { page, page_size: pageSize })}`).then((r) => r.data),
@@ -170,6 +182,7 @@ export const employeeApi = {
   activities: (name: string, qs: string) =>
     api.get<Paged<Activity>>(`/employees/${encodeURIComponent(name)}/activities${q(qs, { page_size: 1000 })}`).then((r) => r.data),
   performance: (name: string, qs: string) => api.get<Performance>(`/employees/${encodeURIComponent(name)}/performance${q(qs)}`).then((r) => r.data),
+  narrative: (name: string, qs: string) => api.get<Narrative>(`/employees/${encodeURIComponent(name)}/narrative${q(qs)}`).then((r) => r.data),
 }
 
 export interface Performance {
