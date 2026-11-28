@@ -340,7 +340,8 @@ python manage.py create-superuser
 python run.py
 ```
 
-Other commands: `db-status`, `allow-domain example.com`, `allow-email someone@partner.com`, `makemigrations -m "message"` (after editing `backend/app/db/models.py`). `EDD_AUTO_MIGRATE=1` (default) also migrates on start-up.
+Set `EDD_BOOTSTRAP_SUPERUSER_EMAIL` / `EDD_BOOTSTRAP_SUPERUSER_PASSWORD` in `.env` and the first superuser is created automatically
+whenever the database has none (fresh environment or lost `storage/app.db`). Other commands: `db-status`, `allow-domain example.com`, `allow-email someone@partner.com`, `makemigrations -m "message"` (after editing `backend/app/db/models.py`). `EDD_AUTO_MIGRATE=1` (default) also migrates on start-up.
 
 ---
 
@@ -360,7 +361,8 @@ python manage.py create-demo-superuser   # demo.admin@example.com   / Demo-Admin
 python manage.py create-demo-dm          # demo.manager@example.com / Demo-Manager-2026!  (owns Phoenix boards, granted Vega)
 ```
 
-Demo-only accounts always land in the demo workspace, see a **"Demo data"** banner, and can never reach real data. The public `/demo` page is an auto-playing 10-chapter presentation of the product.
+Both demo logins are **self-healing**: the backend re-creates them on every start (`EDD_DEMO_ACCOUNTS=1`, default), so a fresh or
+lost database never breaks a demo. Demo-only accounts always land in the demo workspace, see a **"Demo data"** banner, and can never reach real data. The public `/demo` page is an auto-playing 10-chapter presentation of the product.
 
 ---
 

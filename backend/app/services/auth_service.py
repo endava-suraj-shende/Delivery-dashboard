@@ -643,3 +643,49 @@ class AuthService:
         self._audit(db, None, "user.create_superuser", email)
         db.flush()
         return user
+
+    # ------------------------------------------------------------------ self-healing accounts
+    DEMO_ACCOUNTS = (
+        ("demo.admin@example.com", "Demo Superuser", "Demo-Admin-2026!", ROLE_ADMIN, True),
+        ("demo.manager@example.com", "Demo Delivery Manager", "Demo-Manager-2026!", ROLE_DM, False),
+    )
+
+    def upsert_demo_account(self, db: Session, email: str, name: str, password: str, role: str, superuser: bool) -> User:
+        """Create or reset a demo-only login (always lands in the synthetic workspace, never sees real data)."""
+        email = normalize_email(email)
+        user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if user is None:
+            user = User(email=email, name=name)
+            db.add(user)
+        user.name = user.name or name
+        user.password_hash = hash_password(password)
+        user.role = user.requested_role = role
+        user.is_superuser = superuser
+        user.status = STATUS_ACTIVE
+        user.email_verified_at = user.email_verified_at or utcnow()
+        user.approved_at = user.approved_at or utcnow()
+        user.demo_only = user.demo_mode = True
+        user.must_change_password = False
+        user.failed_logins = 0
+        user.locked_until = None
+        db.flush()
+        return user
+
+    def ensure_demo_accounts(self, db: Session) -> List[str]:
+        """Idempotent: makes sure both demo logins exist and are usable. Returns the e-mails that were (re)created."""
+        created: List[str] = []
+        for email, name, password, role, su in self.DEMO_ACCOUNTS:
+            existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+            if existing is None or not existing.demo_only or existing.status != STATUS_ACTIVE or existing.role != role:
+                self.upsert_demo_account(db, email, name, password, role, su)
+                created.append(email)
+        return created
+
+    def ensure_bootstrap_superuser(self, db: Session, email: str, password: str) -> Optional[User]:
+        """Creates the configured superuser when the database has no superuser yet (fresh or lost database)."""
+        if not email or not password:
+            return None
+        has_super = db.execute(select(User).where(User.is_superuser.is_(True), User.demo_only.is_(False))).first()
+        if has_super:
+            return None
+        return self.create_superuser(db, email, email.split("@")[0].replace(".", " ").title(), password)

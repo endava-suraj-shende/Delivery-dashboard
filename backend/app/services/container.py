@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import hashlib
+import logging
 
 from app.core.config import Settings, get_settings
 from app.core.secrets import SecretBox
@@ -22,6 +23,8 @@ from app.services.jira_client import JiraClientPool
 from app.services.jira_data_source import JiraDataSource
 from app.services.jira_reconcile_service import JiraReconcileService
 from app.services.report_service import ReportService
+
+logger = logging.getLogger(__name__)
 
 
 class Container:
@@ -63,7 +66,17 @@ class Container:
             self.auth.ensure_default_policy(s)
             for b in self.jira_boards.list():  # every linked board has a shareable BOARD code
                 self.auth.ensure_board_code(s, b.id, b.owner_id)
+            if settings.demo_accounts:
+                for email in self.auth.ensure_demo_accounts(s):
+                    logger.info("demo account (re)created: %s", email)
+            if self.auth.ensure_bootstrap_superuser(s, settings.bootstrap_superuser_email, settings.bootstrap_superuser_password):
+                logger.warning("bootstrap superuser created from EDD_BOOTSTRAP_SUPERUSER_*: %s", settings.bootstrap_superuser_email)
             s.commit()
+            from sqlalchemy import func, select as _select
+            from app.db.models import User as _User
+            if s.execute(_select(func.count()).select_from(_User).where(_User.demo_only.is_(False))).scalar() == 0:
+                logger.warning("No real accounts in %s - run `python manage.py create-superuser` or set EDD_BOOTSTRAP_SUPERUSER_EMAIL/PASSWORD",
+                               settings.database_url)
         self.analytics.source_mode = lambda: self.data.mode
         self.jira.source_mode = lambda: self.data.mode
         self.analytics.board_members = self.data.board_members
