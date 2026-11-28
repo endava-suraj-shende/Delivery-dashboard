@@ -195,7 +195,7 @@ export default function JiraConnectionsPage() {
                         {sites.map((x) => <option key={x} value={x}>{x}</option>)}
                       </NativeSelect>
                     ) : (
-                      <Input value={discoverSite} onChange={(e) => setDiscoverSite(e.target.value)} placeholder="https://annalect.atlassian.net" className="h-8 w-80" />
+                      <Input value={discoverSite} onChange={(e) => setDiscoverSite(e.target.value)} placeholder="https://your-company.atlassian.net" className="h-8 w-80" />
                     )}
                     <Button variant="outline" size="sm" onClick={() => discover.refetch()} disabled={discover.isFetching || !s.configured || (!sites.length && !discoverSite)}>{discover.isFetching ? <Loader2 className="animate-spin" /> : <Search />} Discover</Button>
                   </div>

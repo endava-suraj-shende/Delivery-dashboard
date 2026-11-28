@@ -169,8 +169,8 @@ def jira_services(jira_settings, fake_jira):
 
 # ---------------------------------------------------------------- url parsing
 def test_parse_board_url_variants():
-    r = parse_board_url("https://annalect.atlassian.net/jira/software/c/projects/OCS/boards/921")
-    assert (r.base_url, r.board_id, r.project_key) == ("https://annalect.atlassian.net", 921, "OCS")
+    r = parse_board_url("https://example-co.atlassian.net/jira/software/c/projects/OCS/boards/921")
+    assert (r.base_url, r.board_id, r.project_key) == ("https://example-co.atlassian.net", 921, "OCS")
     r = parse_board_url("https://x.atlassian.net/jira/software/projects/MRE/boards/12?selectedIssue=MRE-1")
     assert (r.board_id, r.project_key) == (12, "MRE")
     r = parse_board_url("https://x.atlassian.net/secure/RapidBoard.jspa?rapidView=77&projectKey=MED")
