@@ -1,14 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Brain, Check, ChevronDown, ChevronRight, Copy, ExternalLink, ListChecks,
-  MessageSquareText, Radar, RefreshCw, Send, ShieldCheck, Sparkles, TrendingUp,
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Brain, Check, Copy, ExternalLink, Gauge, ListChecks,
+  MessageSquareText, RefreshCw, Send, ShieldCheck, Sparkles, TrendingUp,
 } from 'lucide-react'
 import { GlobalFilterBar, PageHeader } from '@/components/common/PageHeader'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/States'
+import { DataTable } from '@/components/common/DataTable'
+import { CategoryCell, EmployeeLink, TicketLink } from '@/components/common/Tables'
+import { CategoryBarChart, ChartCard, StackedBarChart, type StackSeries } from '@/components/charts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -19,18 +24,18 @@ import {
   intelligenceApi, type AnomaliesResponse, type AnomalyItem, type AskResponse, type IntelligenceStatus, type Recommendation, type RecommendationsResponse,
   type RiskBand, type RiskFactor, type RiskItem, type RiskResponse,
 } from '@/services/api'
-import { cn } from '@/lib/utils'
+import type { CategoryPoint, GroupedRow } from '@/types'
+import { cn, fmtDate } from '@/lib/utils'
 
 // ------------------------------------------------------------------------------------------------------ naming
 // One vocabulary across the page, the API and the docs:
-//   Risk radar        = open tickets ranked by predicted probability of slipping
+//   Risk score        = open tickets ranked by predicted probability of slipping
 //   Recommended actions = reviewable next steps derived from risk and load
 //   Early warnings    = weekly series that moved unusually versus their own history
 //   Ask the data      = natural-language question -> engine-computed answer
 //   Model & trust     = how the model was trained, how good it is, what drives it
 
 type TabKey = 'risk' | 'actions' | 'warnings' | 'ask' | 'model'
-const PAGE_SIZE = 25
 
 const BAND_LABEL: Record<RiskBand, string> = { high: 'High risk', medium: 'Medium risk', low: 'Low risk' }
 const BAND_CLS: Record<RiskBand, string> = {
@@ -116,7 +121,7 @@ export default function IntelligencePage() {
       <PageHeader
         title="AI Insights"
         description="Predicted delivery risk, recommended actions and early warnings for the current filter scope. Trained on this installation's own history; every score is explained and every figure can be checked on Tickets or People."
-        breadcrumbs={[{ label: 'Overview', to: '/' }, { label: 'AI Insights' }]}
+        breadcrumbs={[{ label: 'AI Insights' }]}
         actions={can(user, 'admin', 'dm') ? (
           <Button size="sm" variant="outline" onClick={() => retrain.mutate()} disabled={retrain.isPending} aria-label="Retrain the risk model">
             <RefreshCw className={cn('h-4 w-4', retrain.isPending && 'animate-spin')} /> {retrain.isPending ? 'Training...' : 'Retrain model'}
@@ -148,7 +153,7 @@ export default function IntelligencePage() {
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="space-y-4">
         <TabsList className="h-auto flex-wrap">
-          <TabsTrigger value="risk" className="gap-1.5"><Radar className="h-3.5 w-3.5" aria-hidden /> Risk radar</TabsTrigger>
+          <TabsTrigger value="risk" className="gap-1.5"><Gauge className="h-3.5 w-3.5" aria-hidden /> Risk score</TabsTrigger>
           <TabsTrigger value="actions" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" aria-hidden /> Recommended actions{actions.data ? ` (${actions.data.items.length})` : ''}</TabsTrigger>
           <TabsTrigger value="warnings" className="gap-1.5"><Activity className="h-3.5 w-3.5" aria-hidden /> Early warnings{warnings.data ? ` (${warnings.data.items.length})` : ''}</TabsTrigger>
           <TabsTrigger value="ask" className="gap-1.5"><MessageSquareText className="h-3.5 w-3.5" aria-hidden /> Ask the data</TabsTrigger>
@@ -156,7 +161,7 @@ export default function IntelligencePage() {
         </TabsList>
 
         <TabsContent value="risk">
-          {risk.isLoading && !risk.data ? <LoadingState rows={4} /> : risk.data ? <RiskRadar data={risk.data} band={band} onBand={setBand} /> : null}
+          {risk.isLoading && !risk.data ? <LoadingState rows={4} /> : risk.data ? <RiskScore data={risk.data} band={band} onBand={setBand} /> : null}
         </TabsContent>
         <TabsContent value="actions">
           {actions.isLoading && !actions.data ? <LoadingState rows={3} /> : actions.data ? <RecommendedActions items={actions.data.items} /> : null}
@@ -218,7 +223,7 @@ function DailyBriefing({ risk, actions, warnings, loading, onGo }: {
   }
 
   return (
-    <Card className="border-primary/25 bg-gradient-to-br from-primary/[0.04] to-transparent" data-testid="daily-briefing">
+    <Card className="border-primary/25 bg-gradient-to-br from-primary/[0.04] to-transparent animate-in fade-in-0 slide-in-from-bottom-2 duration-500" data-testid="daily-briefing">
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" aria-hidden /> Daily briefing</CardTitle>
@@ -246,196 +251,261 @@ function DailyBriefing({ risk, actions, warnings, loading, onGo }: {
   )
 }
 
-// -------------------------------------------------------------------------------------------------- risk radar
-function RiskRadar({ data, band, onBand }: { data: RiskResponse; band: RiskBand | 'all'; onBand: (b: RiskBand | 'all') => void }) {
-  const nav = useNavigate()
-  const { queryString } = useFilters()
-  const [person, setPerson] = useState<string | null>(null)
-  const [open, setOpen] = useState<string | null>(null)
-  const [shown, setShown] = useState(PAGE_SIZE)
-  const qs = queryString ? `?${queryString}` : ''
+// -------------------------------------------------------------------------------------------------- risk score
+const BAND_SERIES: StackSeries[] = [
+  { key: 'high', label: 'High risk', color: 'red' },
+  { key: 'other', label: 'Medium / low risk', color: 'grey' },
+]
 
-  const items = useMemo(
-    () => data.items.filter((i) => (band === 'all' || i.band === band) && (!person || (i.employee ?? 'Unassigned') === person)),
-    [data.items, band, person],
-  )
-  const visible = items.slice(0, shown)
+type RiskRowData = RiskItem & { idx: number; assignee: string; dueDays: number | null }
 
-  if (!data.items.length) return <EmptyState title="No open tickets in this scope" description="Widen the period or clear filters to score more work." />
+/** Staggered entrance for table rows - subtle, fast and consistent with the dialog/toast animations elsewhere. */
+const rowEntrance = (idx: number) => `animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-backwards duration-300 [animation-delay:${Math.min(idx, 20) * 30}ms]`
 
+function RiskScorePill({ risk, band }: { risk: number; band: RiskBand }) {
   return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(240px,280px)]">
-      <Card className="min-w-0">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
-          <div>
-            <CardTitle className="text-base">Open tickets ranked by slip risk</CardTitle>
-            <CardDescription>Risk = probability the ticket is delivered late. Expand a row for the reasons; the ticket id opens it in Tickets.</CardDescription>
-          </div>
-          <div className="flex gap-1" role="group" aria-label="Filter by risk band">
-            {(['all', 'high', 'medium', 'low'] as const).map((b) => (
-              <Button key={b} size="sm" variant={band === b ? 'default' : 'outline'} onClick={() => { onBand(b); setShown(PAGE_SIZE) }} aria-pressed={band === b}>
-                {b === 'all' ? `All (${data.summary.open})` : `${BAND_LABEL[b].split(' ')[0]} (${data.summary[b]})`}
-              </Button>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="risk-table">
-              <thead className="bg-muted/50 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="w-8 px-2 py-2" aria-label="Expand" />
-                  <th className="px-3 py-2">Ticket</th>
-                  <th className="px-3 py-2">Assignee</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Due</th>
-                  <th className="px-3 py-2 text-right">Age</th>
-                  <th className="w-40 px-3 py-2 text-right">Slip risk</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((t) => (
-                  <RiskRow key={t.ticket_id} t={t} expanded={open === t.ticket_id} onToggle={() => setOpen(open === t.ticket_id ? null : t.ticket_id)}
-                    onOpen={() => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(t.ticket_id)}`)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!items.length && <p className="px-3 py-8 text-center text-sm text-muted-foreground">No tickets match this band{person ? ` for ${person}` : ''}.</p>}
-          {items.length > shown && (
-            <div className="flex items-center justify-between border-t px-3 py-2 text-xs text-muted-foreground">
-              <span>Showing {shown} of {items.length}{data.items.length < data.summary.open ? ` (top ${data.items.length} by risk - narrow the filters to see the rest)` : ''}</span>
-              <Button size="sm" variant="ghost" onClick={() => setShown((s) => s + PAGE_SIZE)}>Show {Math.min(PAGE_SIZE, items.length - shown)} more</Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="min-w-0 self-start">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Where risk concentrates</CardTitle>
-          <CardDescription>High-risk tickets per assignee. Click to filter the list.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          {(data.by_employee ?? []).slice(0, 15).map((p) => (
-            <button key={p.employee} type="button" onClick={() => { setPerson(person === p.employee ? null : p.employee); setShown(PAGE_SIZE) }} aria-pressed={person === p.employee}
-              className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted', person === p.employee && 'bg-muted font-medium')}>
-              <span className="min-w-0 flex-1 truncate" title={p.employee}>{p.employee}</span>
-              <span className={cn('shrink-0 rounded border px-1.5 text-xs tabular-nums', p.high ? BAND_CLS.high : BAND_CLS.low)} title={`${p.high} high-risk of ${p.open} open`}>{p.high}/{p.open}</span>
-              <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground" title="Average slip risk">{pct(p.avg_risk)}</span>
-            </button>
-          ))}
-          {person && <Button size="sm" variant="ghost" className="mt-2 w-full" onClick={() => setPerson(null)}>Clear assignee filter</Button>}
-        </CardContent>
-      </Card>
+    <div className="flex items-center justify-end gap-2">
+      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden>
+        <div className={cn('h-full rounded-full transition-[width] duration-700 ease-out', BAND_BAR[band])} style={{ width: pct(risk) }} />
+      </div>
+      <span className={cn('inline-block min-w-[44px] rounded border px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums', BAND_CLS[band])} title={BAND_LABEL[band]}>{pct(risk)}</span>
     </div>
   )
 }
 
-function DueCell({ t }: { t: RiskItem }) {
-  const d = daysUntil(t.due_date)
-  if (d === null) return <span className="text-muted-foreground">-</span>
-  const cls = d < 0 ? 'text-red-600 dark:text-red-300 font-medium' : d <= 3 ? 'text-amber-700 dark:text-amber-300' : ''
-  const label = d < 0 ? `${plural(-d, 'day')} overdue` : d === 0 ? 'Due today' : d <= 7 ? `In ${plural(d, 'day')}` : t.due_date
-  return <span className={cn('whitespace-nowrap', cls)} title={t.due_date ?? undefined}>{label}</span>
+function DueCell({ due, days }: { due: string | null; days: number | null }) {
+  if (days === null) return <span className="text-muted-foreground">-</span>
+  const cls = days < 0 ? 'text-red-600 dark:text-red-300 font-medium' : days <= 3 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'
+  const label = days < 0 ? `${plural(-days, 'day')} overdue` : days === 0 ? 'Due today' : days <= 7 ? `In ${plural(days, 'day')}` : fmtDate(due)
+  return <span className={cn('whitespace-nowrap tabular-nums', cls)} title={due ?? undefined}>{label}</span>
 }
 
-function RiskRow({ t, expanded, onToggle, onOpen }: { t: RiskItem; expanded: boolean; onToggle: () => void; onOpen: () => void }) {
-  const reasons = t.factors.map((f) => ({ text: describeFactor(f), up: f.impact > 0 })).filter((r): r is { text: string; up: boolean } => !!r.text)
+function RiskScore({ data, band, onBand }: { data: RiskResponse; band: RiskBand | 'all'; onBand: (b: RiskBand | 'all') => void }) {
+  const nav = useNavigate()
+  const { queryString } = useFilters()
+  const [person, setPerson] = useState<string | null>(null)
+  const [selected, setSelected] = useState<RiskItem | null>(null)
+  const qs = queryString ? `?${queryString}` : ''
+
+  const rows = useMemo<RiskRowData[]>(
+    () => data.items
+      .filter((i) => (band === 'all' || i.band === band) && (!person || (i.employee ?? 'Unassigned') === person))
+      .map((i, idx) => ({ ...i, idx, assignee: i.employee ?? 'Unassigned', dueDays: daysUntil(i.due_date) })),
+    [data.items, band, person],
+  )
+
+  const byAssignee = useMemo<GroupedRow[]>(
+    () => (data.by_employee ?? []).map((e) => ({ name: e.employee, high: e.high, other: Math.max(0, e.open - e.high), total: e.open })),
+    [data.by_employee],
+  )
+
+  const distribution = useMemo<CategoryPoint[]>(() => [
+    { key: 'high', label: 'High risk (75-100%)', color: 'red', value: data.summary.high },
+    { key: 'medium', label: 'Medium risk (45-75%)', color: 'amber', value: data.summary.medium },
+    { key: 'low', label: 'Low risk (0-45%)', color: 'green', value: data.summary.low },
+  ], [data.summary])
+
+  const columns = useMemo<ColumnDef<RiskRowData, unknown>[]>(() => [
+    { accessorKey: 'ticket_id', header: 'Ticket', cell: ({ row }) => <TicketLink id={row.original.ticket_id} link={row.original.ticket_link} onOpen={(id) => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(id)}`)} />, size: 110 },
+    { accessorKey: 'summary', header: 'Summary', cell: ({ getValue }) => <span className="block max-w-[320px] truncate text-muted-foreground" title={(getValue() as string) ?? ''}>{((getValue() as string | null) ?? '').replace(/\s*\(([A-Z]+-\d+)\)\s*$/, '') || '-'}</span> },
+    { accessorKey: 'assignee', header: 'Assignee', cell: ({ row }) => row.original.employee ? <EmployeeLink name={row.original.employee} avatar /> : <span className="text-muted-foreground">Unassigned</span> },
+    { accessorKey: 'work_status', header: 'Status', cell: ({ getValue }) => <CategoryCell dim="work_status" value={getValue() as string} />, filterFn: 'equalsString' },
+    { accessorKey: 'dueDays', header: 'Due', cell: ({ row }) => <DueCell due={row.original.due_date} days={row.original.dueDays} />, sortingFn: (a, b) => (a.original.dueDays ?? 9999) - (b.original.dueDays ?? 9999) },
+    { accessorKey: 'age_days', header: 'Age', cell: ({ getValue }) => <span className="tabular-nums text-muted-foreground">{getValue() as number}d</span>, meta: { align: 'right' }, size: 70 },
+    { accessorKey: 'risk', header: 'Risk score', cell: ({ row }) => <RiskScorePill risk={row.original.risk} band={row.original.band} />, meta: { align: 'right' }, size: 150 },
+  ], [nav, qs])
+
+  if (!data.items.length) return <EmptyState title="No open tickets in this scope" description="Widen the period or clear filters to score more work." />
+
   return (
-    <>
-      <tr className={cn('cursor-pointer border-t hover:bg-muted/40', expanded && 'bg-muted/30')} onClick={onToggle} aria-expanded={expanded}>
-        <td className="px-2 py-2 text-muted-foreground">{expanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}</td>
-        <td className="max-w-[300px] px-3 py-2">
-          <button type="button" className="font-mono text-[13px] font-medium text-primary hover:underline" onClick={(e) => { e.stopPropagation(); onOpen() }}>{t.ticket_id}</button>
-          {t.summary && <div className="truncate text-xs text-muted-foreground" title={t.summary}>{t.summary.replace(/\s*\(([A-Z]+-\d+)\)\s*$/, '')}</div>}
-        </td>
-        <td className="whitespace-nowrap px-3 py-2">{t.employee ?? <span className="text-muted-foreground">Unassigned</span>}</td>
-        <td className="px-3 py-2"><Badge variant="secondary" className="whitespace-nowrap font-normal capitalize">{(t.work_status ?? '').replace(/_/g, ' ')}</Badge></td>
-        <td className="px-3 py-2"><DueCell t={t} /></td>
-        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{t.age_days}d</td>
-        <td className="px-3 py-2">
-          <div className="flex items-center justify-end gap-2">
-            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted" aria-hidden><div className={cn('h-full', BAND_BAR[t.band])} style={{ width: pct(t.risk) }} /></div>
-            <span className={cn('inline-block min-w-[44px] rounded border px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums', BAND_CLS[t.band])} title={BAND_LABEL[t.band]}>{pct(t.risk)}</span>
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard title="Where risk concentrates" description="High-risk share of each assignee's open tickets. Click a bar to filter the table." height="auto">
+          <StackedBarChart data={byAssignee} series={BAND_SERIES} max={12} selected={person ? [person] : []} onSelect={(n) => setPerson(person === n ? null : n)} />
+        </ChartCard>
+        <ChartCard title="Risk band distribution" description="How the open tickets split across the three risk bands. Click to filter the table." height="auto">
+          <CategoryBarChart data={distribution} selected={band === 'all' ? [] : [band]} onSelect={(k) => onBand(band === k ? 'all' : (k as RiskBand))} />
+        </ChartCard>
+      </div>
+
+      <Card className="min-w-0">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base">Risk score by ticket</CardTitle>
+            <CardDescription>Probability of late delivery for every open ticket in scope. Click a row to see why.</CardDescription>
           </div>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="border-t bg-muted/20">
-          <td />
-          <td colSpan={6} className="px-3 py-2.5 text-xs">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <span className="font-medium text-muted-foreground">Why this score</span>
-              {reasons.length ? reasons.map((r, i) => (
-                <span key={i} className="inline-flex items-center gap-1 rounded border bg-background px-2 py-0.5">
-                  {r.up ? <ArrowUpRight className="h-3 w-3 text-red-600 dark:text-red-300" aria-label="raises risk" /> : <ArrowDownRight className="h-3 w-3 text-emerald-700 dark:text-emerald-300" aria-label="lowers risk" />}
-                  {r.text}
-                </span>
-              )) : <span className="text-muted-foreground">no single factor dominates - the score reflects the overall pattern</span>}
-              <span className="ml-auto flex items-center gap-3 text-muted-foreground">
-                {t.jira_board && <span>{t.jira_board}{t.sprint ? ` / ${t.sprint}` : ''}</span>}
-                {t.ticket_link && (
-                  <a href={t.ticket_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
-                    Open in Jira <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </span>
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter by risk band">
+            {(['all', 'high', 'medium', 'low'] as const).map((b) => (
+              <Button key={b} size="sm" variant={band === b ? 'default' : 'outline'} onClick={() => onBand(b)} aria-pressed={band === b}>
+                {b === 'all' ? `All (${data.summary.open})` : `${BAND_LABEL[b].split(' ')[0]} (${data.summary[b]})`}
+              </Button>
+            ))}
+            {person && <Badge variant="secondary" className="ml-2 gap-1 font-normal">{person}<button type="button" aria-label="Clear assignee filter" onClick={() => setPerson(null)} className="ml-1 rounded hover:text-foreground">x</button></Badge>}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0" data-testid="risk-table">
+          <DataTable<RiskRowData>
+            data={rows}
+            columns={columns}
+            pageSize={25}
+            dense
+            searchPlaceholder="Search ticket, summary or assignee"
+            exportName="risk-scores"
+            initialSorting={[{ id: 'risk', desc: true }]}
+            onRowClick={setSelected}
+            rowClassName={(r) => rowEntrance(r.idx)}
+            emptyTitle="No tickets match this band"
+          />
+          {data.items.length < data.summary.open && <p className="border-t px-3 py-2 text-xs text-muted-foreground">Showing the top {data.items.length} of {data.summary.open} by risk - narrow the filters to see the rest.</p>}
+        </CardContent>
+      </Card>
+
+      <RiskExplanationDialog item={selected} onClose={() => setSelected(null)} onOpenTicket={(id) => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(id)}`)} />
+    </div>
+  )
+}
+
+function RiskExplanationDialog({ item, onClose, onOpenTicket }: { item: RiskItem | null; onClose: () => void; onOpenTicket: (id: string) => void }) {
+  const reasons = (item?.factors ?? []).map((f) => ({ text: describeFactor(f), up: f.impact > 0, impact: Math.abs(f.impact) })).filter((r): r is { text: string; up: boolean; impact: number } => !!r.text)
+  const maxImpact = Math.max(0.01, ...reasons.map((r) => r.impact))
+  return (
+    <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        {item && (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><span className="font-mono">{item.ticket_id}</span><RiskScorePill risk={item.risk} band={item.band} /></DialogTitle>
+              <DialogDescription>{item.summary?.replace(/\s*\(([A-Z]+-\d+)\)\s*$/, '') || 'Why this ticket has this risk score'}</DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <dt className="text-muted-foreground">Assignee</dt><dd>{item.employee ?? 'Unassigned'}</dd>
+              <dt className="text-muted-foreground">Status</dt><dd><CategoryCell dim="work_status" value={item.work_status ?? ''} /></dd>
+              <dt className="text-muted-foreground">Due</dt><dd><DueCell due={item.due_date} days={daysUntil(item.due_date)} /></dd>
+              {item.jira_board && (<><dt className="text-muted-foreground">Board</dt><dd>{item.jira_board}{item.sprint ? ` / ${item.sprint}` : ''}</dd></>)}
+            </dl>
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why this score</p>
+              {reasons.length ? (
+                <ul className="space-y-1.5">
+                  {reasons.map((r, i) => (
+                    <li key={i} className={cn('flex items-center gap-2 text-sm', rowEntrance(i))}>
+                      {r.up ? <ArrowUpRight className="h-4 w-4 shrink-0 text-red-600 dark:text-red-300" aria-label="raises risk" /> : <ArrowDownRight className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-label="lowers risk" />}
+                      <span className="w-56 shrink-0">{r.text}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden><div className={cn('h-full rounded-full', r.up ? 'bg-red-400' : 'bg-emerald-400')} style={{ width: `${(r.impact / maxImpact) * 100}%` }} /></div>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-sm text-muted-foreground">No single factor dominates - the score reflects the overall pattern.</p>}
             </div>
-          </td>
-        </tr>
-      )}
-    </>
+            <div className="flex justify-end gap-2 pt-1">
+              {item.ticket_link && <Button variant="outline" size="sm" asChild><a href={item.ticket_link} target="_blank" rel="noreferrer">Open in Jira <ExternalLink className="ml-1 h-3.5 w-3.5" /></a></Button>}
+              <Button size="sm" onClick={() => { onClose(); onOpenTicket(item.ticket_id) }}>View in Tickets</Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
 // ------------------------------------------------------------------------------------------ recommended actions
+type ActionRow = Recommendation & { idx: number; urgency: string }
+const URGENCY: Record<number, { label: string; cls: string }> = {
+  1: { label: 'Do today', cls: BAND_CLS.high },
+  2: { label: 'This week', cls: BAND_CLS.medium },
+  3: { label: 'When convenient', cls: 'border-border bg-muted text-muted-foreground' },
+}
+
 function RecommendedActions({ items }: { items: Recommendation[] }) {
   const nav = useNavigate()
   const { queryString, setList } = useFilters()
+  const [selected, setSelected] = useState<ActionRow | null>(null)
   const qs = queryString ? `?${queryString}` : ''
+  const openTicket = (id: string) => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(id)}`)
+  const rows = useMemo<ActionRow[]>(() => items.map((r, idx) => ({ ...r, idx, urgency: URGENCY[r.priority]?.label ?? 'Later' })), [items])
+
+  const columns = useMemo<ColumnDef<ActionRow, unknown>[]>(() => [
+    { accessorKey: 'idx', header: '#', cell: ({ getValue }) => <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{(getValue() as number) + 1}</span>, size: 50, enableSorting: false },
+    { accessorKey: 'urgency', header: 'Urgency', cell: ({ row }) => { const u = URGENCY[row.original.priority] ?? URGENCY[3]; return <span className={cn('inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium', u.cls)}>{u.label}</span> }, filterFn: 'equalsString', size: 110 },
+    { accessorKey: 'kind', header: 'Type', cell: ({ getValue }) => { const k = ACTION_KIND[getValue() as string]; return <Badge variant="secondary" className="font-normal" title={k?.hint}>{k?.label ?? (getValue() as string)}</Badge> }, filterFn: 'equalsString', size: 100 },
+    { accessorKey: 'title', header: 'Recommended action', cell: ({ row }) => (
+      <div className="min-w-[240px]">
+        <p className="font-medium leading-snug">{row.original.title}</p>
+        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={row.original.detail}>{row.original.detail}</p>
+      </div>
+    ) },
+    { accessorKey: 'tickets', header: 'Tickets', enableSorting: false, cell: ({ row }) => (
+      <div className="flex min-w-[210px] flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {row.original.tickets.slice(0, 3).map((t) => <TicketLink key={t} id={t} onOpen={openTicket} chip />)}
+        {row.original.tickets.length > 3 && <span className="text-xs text-muted-foreground">+{row.original.tickets.length - 3}</span>}
+        {!row.original.tickets.length && <span className="text-xs text-muted-foreground">-</span>}
+      </div>
+    ) },
+    { accessorKey: 'effect', header: 'Why it matters', cell: ({ getValue }) => <span className="block max-w-[260px] truncate text-xs text-muted-foreground" title={(getValue() as string) ?? ''}>{(getValue() as string | null) ?? '-'}</span>, enableSorting: false },
+  ], [openTicket])
+
   if (!items.length) return <EmptyState title="Nothing to recommend" description="No high-risk, blocked or overloaded work was found in this scope." icon={<ListChecks className="h-6 w-6" />} />
+
   return (
-    <ol className="grid gap-3 md:grid-cols-2" data-testid="recommendations" aria-label="Recommended actions in priority order">
-      {items.map((r, i) => {
-        const kind = ACTION_KIND[r.kind] ?? { label: r.kind, hint: '' }
-        return (
-          <li key={i}>
-            <Card className={cn('h-full', r.priority === 1 && 'border-primary/40')}>
-              <CardHeader className="pb-2">
+    <Card className="min-w-0">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Recommended actions, in priority order</CardTitle>
+        <CardDescription>Derived from the risk scores and current load. Click a row for the evidence and every affected ticket.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-0" data-testid="recommendations">
+        <DataTable<ActionRow>
+          data={rows}
+          columns={columns}
+          pageSize={25}
+          dense
+          searchPlaceholder="Search actions"
+          exportName="recommended-actions"
+          initialSorting={[{ id: 'idx', desc: false }]}
+          onRowClick={setSelected}
+          rowClassName={(r) => rowEntrance(r.idx)}
+          columnFilters={[
+            { id: 'urgency', label: 'Urgency', options: Object.values(URGENCY).map((u) => ({ value: u.label, label: u.label })) },
+            { id: 'kind', label: 'Type', options: Object.entries(ACTION_KIND).map(([k, v]) => ({ value: k, label: v.label })) },
+          ]}
+        />
+      </CardContent>
+
+      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+        <DialogContent className="max-w-xl">
+          {selected && (
+            <>
+              <DialogHeader>
                 <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary" aria-label={`Action ${i + 1}`}>{i + 1}</span>
-                  <Badge variant={r.priority === 1 ? 'default' : 'secondary'} title={kind.hint}>{kind.label}</Badge>
-                  <span className="text-xs text-muted-foreground">{r.priority === 1 ? 'Do today' : r.priority === 2 ? 'This week' : 'When convenient'}</span>
+                  <span className={cn('inline-block rounded border px-1.5 py-0.5 text-xs font-medium', (URGENCY[selected.priority] ?? URGENCY[3]).cls)}>{selected.urgency}</span>
+                  <Badge variant="secondary" className="font-normal">{ACTION_KIND[selected.kind]?.label ?? selected.kind}</Badge>
                 </div>
-                <CardTitle className="text-base leading-snug">{r.title}</CardTitle>
-                <CardDescription>{r.detail}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {r.evidence.length > 0 && (
-                  <details className="group text-xs">
-                    <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Evidence ({r.evidence.length})</summary>
-                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">{r.evidence.slice(0, 6).map((e, j) => <li key={j}>{e}</li>)}</ul>
-                  </details>
-                )}
-                {r.effect && <p className="text-xs"><span className="font-medium text-muted-foreground">Why it matters:</span> {r.effect}</p>}
-                <div className="flex flex-wrap items-center gap-1 pt-1">
-                  {r.tickets.slice(0, 8).map((t) => (
-                    <button key={t} type="button" className="rounded border px-1.5 py-0.5 font-mono text-xs text-primary hover:bg-muted"
-                      onClick={() => nav(`/jira${qs}${qs ? '&' : '?'}ticket=${encodeURIComponent(t)}`)}>{t}</button>
-                  ))}
-                  {r.tickets.length > 8 && <span className="text-xs text-muted-foreground">+{r.tickets.length - 8} more</span>}
-                  {(r.employees ?? []).slice(0, 4).map((e) => (
-                    <button key={e} type="button" className="rounded border px-1.5 py-0.5 text-xs hover:bg-muted" onClick={() => nav(`/employees/${encodeURIComponent(e)}${qs}`)}>{e}</button>
-                  ))}
-                  {r.kind === 'unblock' && <Button size="sm" variant="outline" className="ml-auto h-6 text-xs" onClick={() => { setList('status', ['blocked']); nav(`/jira${qs}`) }}>View all blocked</Button>}
+                <DialogTitle className="leading-snug">{selected.title}</DialogTitle>
+                <DialogDescription>{selected.detail}</DialogDescription>
+              </DialogHeader>
+              {selected.effect && <p className="text-sm"><span className="font-medium text-muted-foreground">Why it matters:</span> {selected.effect}</p>}
+              {selected.evidence.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evidence</p>
+                  <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">{selected.evidence.map((e, j) => <li key={j} className={rowEntrance(j)}>{e}</li>)}</ul>
                 </div>
-              </CardContent>
-            </Card>
-          </li>
-        )
-      })}
-    </ol>
+              )}
+              {(selected.tickets.length > 0 || (selected.employees?.length ?? 0) > 0) && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Affected</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selected.tickets.map((t) => <TicketLink key={t} id={t} onOpen={(id) => { setSelected(null); openTicket(id) }} chip />)}
+                    {(selected.employees ?? []).map((e) => <button key={e} type="button" className="rounded border px-1.5 py-0.5 text-xs hover:bg-muted" onClick={() => { setSelected(null); nav(`/employees/${encodeURIComponent(e)}${qs}`) }}>{e}</button>)}
+                  </div>
+                </div>
+              )}
+              {selected.kind === 'unblock' && (
+                <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => { setSelected(null); setList('status', ['blocked']); nav(`/jira${qs}`) }}>View all blocked tickets</Button></div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }
 

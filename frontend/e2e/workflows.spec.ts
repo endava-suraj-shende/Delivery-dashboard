@@ -88,7 +88,8 @@ test.describe('Delivery workflows', () => {
     await expect(risk).toBeVisible({ timeout: 90_000 })  // first call trains the model
     await expect(risk.locator('tbody tr').first()).toBeVisible()
     await risk.locator('tbody tr').first().click()
-    await expect(risk.getByText('Why this score')).toBeVisible()
+    await expect(page.getByRole('dialog').getByText('Why this score')).toBeVisible()
+    await page.keyboard.press('Escape')
 
     await page.getByRole('tab', { name: /Recommended actions/ }).click()
     await expect(page.getByTestId('recommendations').or(page.getByText('Nothing to recommend'))).toBeVisible()
