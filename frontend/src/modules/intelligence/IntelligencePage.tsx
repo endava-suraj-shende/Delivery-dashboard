@@ -11,7 +11,8 @@ import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/States'
 import { DataTable } from '@/components/common/DataTable'
 import { CategoryCell, EmployeeLink, TicketLink } from '@/components/common/Tables'
-import { CategoryBarChart, ChartCard, StackedBarChart, TrendChart, type LineSeries, type StackSeries } from '@/components/charts'
+import { CategoryBarChart, ChartCard, StackedBarChart, type LineSeries, type StackSeries } from '@/components/charts'
+import { WeeklyBaselineChart, WeeklyFlowChart, type WeeklyRow } from '@/components/charts/WeeklyCharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -598,7 +599,7 @@ function EarlyWarnings({ queryString }: { queryString: string }) {
         byWeek.set(p.week, row)
       }
     }
-    return [...byWeek.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))) as ({ date: string } & Record<string, number | string>)[]
+    return [...byWeek.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))) as unknown as (WeeklyRow & Record<string, number | string>)[]
   }, [q.data])
 
   if (q.isLoading && !q.data) return <LoadingState rows={3} />
@@ -632,11 +633,11 @@ function EarlyWarnings({ queryString }: { queryString: string }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <ChartCard title="Team flow by week" description="Tickets started, completed and blocked per week for this scope.">
-          <TrendChart data={weekly} series={FLOW_SERIES} area />
+        <ChartCard title="Work in vs work out, by week" description="Bars: tickets started (blue) and completed (green) each week. Line: tickets that became blocked. More blue than green for several weeks means work is piling up." height="auto">
+          <WeeklyFlowChart data={weekly} />
         </ChartCard>
-        <ChartCard title="Status updates by week" description="Reporting volume - a sudden drop usually means work is not being logged.">
-          <TrendChart data={weekly} series={ACTIVITY_SERIES} area />
+        <ChartCard title="Status updates by week" description="How much work was logged each week against its usual level (dashed line = median of the previous weeks). The latest bar turns red when it falls below usual." height="auto">
+          <WeeklyBaselineChart data={weekly} metric="activity" label="Status updates" />
         </ChartCard>
       </div>
 
