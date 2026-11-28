@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     lockout_minutes: int = 15
     # Sign-up policy defaults (editable by the superuser in the UI)
     default_allowed_domains: List[str] = Field(default_factory=lambda: ["endava.com"])
+    # Self-healing accounts: the demo-only logins are (re)created on every start so a lost / fresh database
+    # never breaks demos; a bootstrap superuser is created when both values are set (e.g. first deployment).
+    demo_accounts: bool = True
+    bootstrap_superuser_email: str = ""
+    bootstrap_superuser_password: str = ""
     # Resend (https://resend.com). Without an API key links are written to the log (and returned in local env).
     resend_api_key: str = ""
     email_from: str = "Delivery Dashboard <onboarding@resend.dev>"

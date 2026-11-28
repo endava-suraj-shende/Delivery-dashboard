@@ -38,7 +38,8 @@ Data/
 .DS_Store
 Thumbs.db
 
-# application database (accounts, encrypted Jira tokens)
+# application database (accounts, encrypted Jira tokens) and runtime demo workspace (rebuilt on every start)
 storage/app.db*
 storage/*.db*
 storage/demo/
+storage/backups/

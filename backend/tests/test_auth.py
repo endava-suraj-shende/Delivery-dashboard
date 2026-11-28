@@ -343,12 +343,7 @@ def test_superuser_grants_and_revokes_boards_and_regenerates_code(client: TestCl
 
 
 def test_demo_only_superuser_cannot_leave_demo(client: TestClient, anon: TestClient):
-    import app.services.container as container_mod
-    cont = container_mod.get_container()
-    with cont.db() as db:
-        u = cont.auth.create_superuser(db, "demo.admin@example.com", "Demo", "Demo-Admin-2026!")
-        u.demo_only = True
-        db.commit()
+    # demo.admin@example.com is created automatically at start-up (self-healing demo accounts)
     assert _login(anon, "demo.admin@example.com", "Demo-Admin-2026!").json()["user"]["demo_only"] is True
     assert anon.get("/api/v1/excel/status").json().get("demo") is True
     demo_users = {u["email"] for u in anon.get("/api/v1/admin/users").json()["items"]}
@@ -360,17 +355,30 @@ def test_demo_only_superuser_cannot_leave_demo(client: TestClient, anon: TestCli
 
 
 def test_demo_only_dm_sees_only_seeded_demo_boards(client: TestClient, anon: TestClient):
-    import app.services.container as container_mod
-    from app.db.models import User, utcnow
-    from app.core.security import hash_password
-    cont = container_mod.get_container()
-    with cont.db() as db:
-        u = User(email="demo.manager@example.com", name="Demo DM", password_hash=hash_password("Demo-Manager-2026!"),
-                 role="dm", requested_role="dm", status="active", email_verified_at=utcnow(), approved_at=utcnow(), demo_only=True)
-        db.add(u)
-        db.commit()
+    # demo.manager@example.com is created automatically at start-up (self-healing demo accounts)
     me = _login(anon, "demo.manager@example.com", "Demo-Manager-2026!").json()["user"]
     assert me["demo_only"] is True and me["board_count"] == 3  # owns 2 Phoenix boards + granted Vega
     labels = {b["label"] for b in anon.get("/api/v1/jira/connections/boards").json()["items"]}
     assert labels == {"Phoenix Scrum Board", "Phoenix Mobile", "Vega QA Automation"}
     assert anon.get("/api/v1/admin/users").status_code == 403
+
+
+def test_demo_accounts_self_heal_on_startup(anon: TestClient):
+    """A fresh (or wiped) database still has working demo logins without running manage.py."""
+    import app.services.container as container_mod
+    from app.db.models import User
+    from sqlalchemy import select
+    cont = container_mod.get_container()
+    with cont.db() as db:
+        for email, *_ in cont.auth.DEMO_ACCOUNTS:
+            u = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+            if u:
+                db.delete(u)
+        db.commit()
+        recreated = cont.auth.ensure_demo_accounts(db)
+        db.commit()
+    assert set(recreated) == {"demo.admin@example.com", "demo.manager@example.com"}
+    me = _login(anon, "demo.manager@example.com", "Demo-Manager-2026!").json()["user"]
+    assert me["demo_only"] is True and me["role"] == "dm"
+    with cont.db() as db:  # second run is a no-op
+        assert cont.auth.ensure_demo_accounts(db) == []
