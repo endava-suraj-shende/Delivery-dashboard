@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -298,3 +298,34 @@ class GeneratedReport(Base):
         return {"report_id": self.id, "report_type": self.report_type, "format": self.format, "file_name": self.file_name,
                 "size_bytes": self.size_bytes, "created_at": self.created_at.isoformat(), "target": self.target,
                 "period": self.period, "created_by": self.created_by}
+
+
+class ReportSchedule(Base):
+    """A recurring e-mail digest: narrative + optional report attachment for a filter scope."""
+    __tablename__ = "report_schedules"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    report_type: Mapped[str] = mapped_column(String(40), nullable=False, default="management")
+    format: Mapped[str] = mapped_column(String(8), nullable=False, default="pdf")  # pdf | xlsx | none
+    filters: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    preset: Mapped[str] = mapped_column(String(24), nullable=False, default="last_15_days")
+    cadence: Mapped[str] = mapped_column(String(16), nullable=False, default="weekly")  # weekly | fortnightly | daily
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0 = Monday
+    hour_utc: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    recipients: Mapped[List[str]] = mapped_column(JSON, nullable=False, default=list)
+    include_narrative: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_status: Mapped[Optional[str]] = mapped_column(String(255))
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"id": self.id, "owner_id": self.owner_id, "name": self.name, "report_type": self.report_type, "format": self.format,
+                "filters": self.filters or {}, "preset": self.preset, "cadence": self.cadence, "weekday": self.weekday,
+                "hour_utc": self.hour_utc, "recipients": self.recipients or [], "include_narrative": self.include_narrative,
+                "active": self.active, "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+                "last_status": self.last_status, "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
+                "created_at": self.created_at.isoformat()}

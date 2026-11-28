@@ -128,7 +128,9 @@ class BoardRepo:
                                     base_url=doc.get("base_url") or "", board_id=int(doc.get("board_id") or 0),
                                     enabled=bool(doc.get("enabled", True)), config=payload, position=pos))
                 else:
-                    row.owner_id = doc.get("owner_id")
+                    # ownership is only ever changed explicitly; a stale in-memory document must not clear it
+                    if doc.get("owner_id") is not None or doc.get("_clear_owner"):
+                        row.owner_id = doc.get("owner_id")
                     row.label = doc.get("label") or ""
                     row.base_url = doc.get("base_url") or ""
                     row.board_id = int(doc.get("board_id") or 0)

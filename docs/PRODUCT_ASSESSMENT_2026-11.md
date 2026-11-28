@@ -404,7 +404,7 @@ No claim above about *future* numbers is measured; the "expected impact" column 
 > rate limiting, secure-cookie default, streamed/sniffed uploads, pinned dependencies + CI, backup/restore + nightly job, confirm dialogs,
 > Dockerfile/compose). From P1: persisted data snapshot (startup 51 s ? 4 s measured), DB-backed report registry scoped per user,
 > compact/paginated ticket + deployment payloads (dev summary 761 ? 325 KB), rule-based narrative + anomaly flags on Overview and
-> Employee pages, missing DB indexes (migration 0007). SSO (OIDC / Entra ID) shipped later the same day. Navigation 15?7 (grouped sidebar) and the 5-KPI Overview shipped as well. Still open from P1: scheduled digest e-mails, typed responses.
+> Employee pages, missing DB indexes (migration 0007). SSO (OIDC / Entra ID) shipped later the same day. Navigation 15?7 (grouped sidebar) and the 5-KPI Overview shipped as well. Scheduled digest e-mails shipped (migration 0008, Reports page). Still open from P1: typed API responses.
 
 ### P0 — critical / blockers (30 days)
 

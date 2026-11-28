@@ -6,6 +6,7 @@ import { BarChart3, Briefcase, Building2, CheckCircle2, Clock, Download, FileSpr
 import { GlobalFilterBar, PageHeader } from '@/components/common/PageHeader'
 import { MultiSelect } from '@/components/common/MultiSelect'
 import { DataTable } from '@/components/common/DataTable'
+import { ScheduledDigests } from '@/modules/reports/ScheduledDigests'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -209,6 +210,8 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ScheduledDigests />
 
       <Card>
         <CardHeader>

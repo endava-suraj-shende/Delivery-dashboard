@@ -281,7 +281,37 @@ export const reportApi = {
   generate: (body: ReportRequest) => api.post<ReportInfo>('/reports/generate', body).then((r) => r.data),
   list: () => api.get<{ items: ReportInfo[] }>('/reports').then((r) => r.data.items),
   downloadUrl: (id: string) => `/api/v1/reports/download/${id}`,
+  schedules: () => api.get<{ items: ReportSchedule[]; cadences: string[]; presets: string[]; formats: string[]; email_enabled: boolean }>('/reports/schedules').then((r) => r.data),
+  createSchedule: (body: ScheduleBody) => api.post<ReportSchedule>('/reports/schedules', body).then((r) => r.data),
+  updateSchedule: (id: string, body: Partial<ScheduleBody>) => api.patch<ReportSchedule>(`/reports/schedules/${id}`, body).then((r) => r.data),
+  deleteSchedule: (id: string) => api.delete(`/reports/schedules/${id}`).then((r) => r.data),
+  sendScheduleNow: (id: string) => api.post<SchedulePreview>(`/reports/schedules/${id}/send-now`).then((r) => r.data),
+  previewSchedule: (id: string) => api.post<SchedulePreview>(`/reports/schedules/${id}/preview`).then((r) => r.data),
 }
+
+export interface ScheduleBody {
+  name: string
+  recipients: string[]
+  cadence: 'daily' | 'weekly' | 'fortnightly'
+  weekday: number
+  hour_utc: number
+  preset: string
+  format: 'pdf' | 'xlsx' | 'none'
+  report_type: string
+  include_narrative: boolean
+  active: boolean
+  filters: Record<string, string[]>
+}
+export interface ReportSchedule extends ScheduleBody {
+  id: string
+  owner_id: string
+  owner: { id: string; name: string; email: string } | null
+  last_run_at: string | null
+  last_status: string | null
+  next_run_at: string | null
+  created_at: string
+}
+export interface SchedulePreview { sent: boolean; subject: string; paragraphs: string[]; flags: string[]; recipients: string[]; attachment: string | null; reason?: string }
 
 export function filtersBodyFromQuery(qs: string): Record<string, unknown> {
   const p = new URLSearchParams(qs)

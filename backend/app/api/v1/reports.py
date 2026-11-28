@@ -1,13 +1,16 @@
 """Report Center endpoints."""
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
 
 from app.api.auth_deps import managers
-from app.api.deps import loaded_container, scope_filters
+from app.api.deps import container, loaded_container, scope_filters
+from app.db.base import get_db
 from app.db.models import User
 from app.schemas.common import ReportRequest
 from app.services.container import Container
@@ -68,3 +71,77 @@ async def download(report_id: str, c: Container = Depends(loaded_container), use
         from app.core.exceptions import NotFoundError
         raise NotFoundError("Report not found or expired")
     return FileResponse(info["path"], media_type=MEDIA[info["format"]], filename=info["file_name"])
+
+
+# ---------------------------------------------------------------- scheduled digests
+class ScheduleBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    recipients: List[str]
+    cadence: str = "weekly"
+    weekday: int = 0
+    hour_utc: int = 6
+    preset: str = "last_15_days"
+    format: str = "pdf"
+    report_type: str = "management"
+    include_narrative: bool = True
+    active: bool = True
+    filters: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SchedulePatch(BaseModel):
+    name: Optional[str] = None
+    recipients: Optional[List[str]] = None
+    cadence: Optional[str] = None
+    weekday: Optional[int] = None
+    hour_utc: Optional[int] = None
+    preset: Optional[str] = None
+    format: Optional[str] = None
+    report_type: Optional[str] = None
+    include_narrative: Optional[bool] = None
+    active: Optional[bool] = None
+    filters: Optional[Dict[str, Any]] = None
+
+
+@router.get("/schedules")
+async def list_schedules(c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    from app.services.schedule_service import CADENCES, FORMATS, PRESETS
+    return {"items": c.schedules.list(db, user), "cadences": list(CADENCES), "presets": list(PRESETS), "formats": list(FORMATS),
+            "email_enabled": c.email.enabled}
+
+
+@router.post("/schedules")
+async def create_schedule(body: ScheduleBody, c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.schedules.create(db, user, body.model_dump())
+    db.commit()
+    return out
+
+
+@router.patch("/schedules/{schedule_id}")
+async def update_schedule(schedule_id: str, body: SchedulePatch, c: Container = Depends(container), user: User = Depends(managers),
+                          db: Session = Depends(get_db)) -> Dict[str, Any]:
+    out = c.schedules.update(db, user, schedule_id, body.model_dump(exclude_none=True))
+    db.commit()
+    return out
+
+
+@router.delete("/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: str, c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    c.schedules.delete(db, user, schedule_id)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/schedules/{schedule_id}/send-now")
+async def send_schedule_now(schedule_id: str, c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Builds and sends the digest immediately (also the easiest way to test recipients)."""
+    row = c.schedules._get(db, user, schedule_id)
+    out = c.schedules.run(db, row, send=True)
+    row.last_run_at = __import__("app.db.models", fromlist=["utcnow"]).utcnow()
+    db.commit()
+    return out
+
+
+@router.post("/schedules/{schedule_id}/preview")
+async def preview_schedule(schedule_id: str, c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    row = c.schedules._get(db, user, schedule_id)
+    return c.schedules.run(db, row, send=False)

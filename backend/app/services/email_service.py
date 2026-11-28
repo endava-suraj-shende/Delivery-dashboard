@@ -4,8 +4,9 @@ Without an API key the message is written to the log so local development still 
 """
 from __future__ import annotations
 
+import base64
 import html
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 
@@ -42,11 +43,15 @@ class EmailService:
     def enabled(self) -> bool:
         return bool(self.s.resend_api_key)
 
-    def send(self, to: str, subject: str, html_body: str, text_body: str) -> Dict[str, Any]:
+    def send(self, to: str | Sequence[str], subject: str, html_body: str, text_body: str,
+             attachments: Optional[List[Tuple[str, bytes]]] = None) -> Dict[str, Any]:
+        recipients = [to] if isinstance(to, str) else list(to)
         if not self.enabled:
-            log.warning("E-mail not configured (EDD_RESEND_API_KEY); message to %s not sent.\n%s", to, text_body)
+            log.warning("E-mail not configured (EDD_RESEND_API_KEY); message to %s not sent.\n%s", ", ".join(recipients), text_body)
             return {"sent": False, "reason": "email_not_configured"}
-        payload = {"from": self.s.email_from, "to": [to], "subject": subject, "html": html_body, "text": text_body}
+        payload: Dict[str, Any] = {"from": self.s.email_from, "to": recipients, "subject": subject, "html": html_body, "text": text_body}
+        if attachments:
+            payload["attachments"] = [{"filename": name, "content": base64.b64encode(data).decode()} for name, data in attachments]
         try:
             r = httpx.post(RESEND_URL, json=payload, timeout=20,
                            headers={"Authorization": f"Bearer {self.s.resend_api_key}", "Content-Type": "application/json"})
@@ -94,3 +99,13 @@ class EmailService:
     def send_admin_notice(self, to: str, name: str, subject: str, text: str, link: str) -> Dict[str, Any]:
         intro = f"<p>Hi {html.escape(name)},</p><p>{html.escape(text)}</p>"
         return self.send(to, subject, _layout(subject, intro, "Open User Management", link, "You receive this because you are a superuser."), f"Hi {name},\n\n{text}\n{link}")
+
+    def send_digest(self, to: Sequence[str], subject: str, scope: str, period: str, paragraphs: Sequence[str],
+                    flags: Sequence[str], link: str, attachments: Optional[List[Tuple[str, bytes]]] = None) -> Dict[str, Any]:
+        paras = "".join(f"<p>{html.escape(p)}</p>" for p in paragraphs)
+        flag_html = ("<ul style='padding-left:18px;color:#92400e'>" + "".join(f"<li>{html.escape(f)}</li>" for f in flags) + "</ul>") if flags else ""
+        intro = (f"<p style='font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin:0 0 10px'>{html.escape(scope)} &middot; {html.escape(period)}</p>"
+                 f"{paras}{flag_html}")
+        text = f"{scope} - {period}\n\n" + "\n\n".join(paragraphs) + ("\n\nWatch:\n- " + "\n- ".join(flags) if flags else "") + f"\n\n{link}"
+        return self.send(to, subject, _layout(subject, intro, "Open the dashboard", link,
+                         "Scheduled delivery digest. Figures are computed from the configured Jira boards / workbooks at send time."), text, attachments)

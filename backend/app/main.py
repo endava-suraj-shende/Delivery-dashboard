@@ -51,6 +51,22 @@ async def _nightly_backup() -> None:
             log.exception("Nightly backup failed")
 
 
+async def _run_schedules(interval: int = 60) -> None:
+    """Background task: send due e-mail digests (report_schedules.next_run_at <= now)."""
+    c = get_container()
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            def _tick() -> int:
+                with c.db() as db:
+                    return c.schedules.run_due(db)
+            n = await asyncio.to_thread(_tick)
+            if n:
+                log.info("Sent %d scheduled digest(s)", n)
+        except Exception:
+            log.exception("Schedule tick failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     c = get_container()
@@ -71,12 +87,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.exception("Initial load failed; the API will retry on first request")
     task = asyncio.create_task(_watch_sources())
     backup_task = asyncio.create_task(_nightly_backup())
+    schedule_task = asyncio.create_task(_run_schedules())
     try:
         yield
     finally:
-        for t in (task, backup_task):
+        for t in (task, backup_task, schedule_task):
             t.cancel()
-        for t in (task, backup_task):
+        for t in (task, backup_task, schedule_task):
             try:
                 await t
             except (asyncio.CancelledError, Exception):

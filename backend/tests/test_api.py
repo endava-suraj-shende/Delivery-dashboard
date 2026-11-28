@@ -223,3 +223,49 @@ def test_report_history_persists_and_is_scoped(client):
     cont = cm.get_container()
     fresh = ReportService(cont.settings, cont.analytics, cont.bus, db_factory=cont.db)
     assert fresh.get(rid)["report_id"] == rid
+
+
+def test_schedule_digest_lifecycle(client, monkeypatch):
+    from datetime import timedelta
+    import app.services.container as cm
+    from app.db.models import ReportSchedule, utcnow
+    from app.services.schedule_service import next_run
+    # next_run: weekly Monday 06:00 from a Wednesday -> following Monday; fortnightly lands on an even ISO week
+    from datetime import datetime
+    wed = datetime(2026, 11, 25, 12, 0)
+    assert next_run(wed, "weekly", 0, 6) == datetime(2026, 11, 30, 6, 0)
+    assert next_run(wed, "fortnightly", 0, 6).isocalendar()[1] % 2 == 0
+    assert next_run(wed, "daily", 0, 6) == datetime(2026, 11, 26, 6, 0)
+
+    body = {"name": "Weekly OCS digest", "recipients": ["pm@endava.com", "client@partner.example"], "cadence": "weekly",
+            "weekday": 0, "hour_utc": 6, "preset": "last_30_days", "format": "csv"}
+    assert client.post("/api/v1/reports/schedules", json=body).status_code == 400  # csv is not a digest format
+    body["format"] = "pdf"
+    r = client.post("/api/v1/reports/schedules", json=body)
+    assert r.status_code == 200, r.text
+    sid = r.json()["id"]
+    assert r.json()["next_run_at"] and r.json()["owner"]["email"] == "admin@endava.com"
+    assert any(i["id"] == sid for i in client.get("/api/v1/reports/schedules").json()["items"])
+
+    prev = client.post(f"/api/v1/reports/schedules/{sid}/preview").json()
+    assert prev["sent"] is False and prev["paragraphs"] and prev["attachment"].endswith(".pdf")
+
+    cont = cm.get_container()
+    captured = {}
+    monkeypatch.setattr(cont.email, "send", lambda to, subject, html_body, text_body, attachments=None: captured.update(
+        to=to, subject=subject, attachments=attachments) or {"sent": True, "id": "x"})
+    with cont.db() as db:
+        row = db.get(ReportSchedule, sid)
+        row.next_run_at = utcnow() - timedelta(minutes=1)
+        db.commit()
+        assert cont.schedules.run_due(db) == 1
+        row = db.get(ReportSchedule, sid)
+        assert row.last_status == "sent" and row.next_run_at > utcnow()
+    assert captured["to"] == ["pm@endava.com", "client@partner.example"] and captured["attachments"][0][0].endswith(".pdf")
+    assert "digest" in captured["subject"].lower()
+
+    pr = client.patch(f"/api/v1/reports/schedules/{sid}", json={"active": False})
+    assert pr.status_code == 200, pr.text
+    assert pr.json()["next_run_at"] is None
+    assert client.delete(f"/api/v1/reports/schedules/{sid}").json()["ok"] is True
+    assert not any(i["id"] == sid for i in client.get("/api/v1/reports/schedules").json()["items"])

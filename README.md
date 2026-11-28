@@ -434,7 +434,7 @@ All endpoints live under `/api/v1` and are documented interactively at `/docs`. 
 | `jira/connections` | `boards`, `test`, `discover`, `me`, `redeem-code`, people picker | DM (own) / superuser |
 | `jira/live` | `sync`, `status`, `reconciliation`, `reconciliation/file/{id}`, `issues/{key}`, `users`, `user-map` | viewers |
 | `deployment` | `dev/summary`, `production/summary`, `trends` | viewers |
-| `reports` | `types`, `generate`, `employee`, `team`, `project`, `management`, `download/{id}` | DM / admin |
+| `reports` | `types`, `generate`, `employee`, `team`, `project`, `management`, `download/{id}`, `schedules` (CRUD, `preview`, `send-now`) | DM / admin |
 | `config` | `status` (GET/PUT, `mapping`, `reset`), `app` | superuser |
 | `search`, `meta` | global search, `dimensions`, `presets` | viewers |
 
