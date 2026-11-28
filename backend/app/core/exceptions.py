@@ -58,8 +58,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
-        log.exception("Unhandled error: %s", exc)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        log.exception("Unhandled error on %s %s: %s", request.method, request.url.path, exc)
+        import os
+        if os.environ.get("EDD_DEBUG_ERRORS_FILE"):  # opt-in: append full tracebacks for load/debug sessions
+            import traceback
+            with open(os.environ["EDD_DEBUG_ERRORS_FILE"], "a", encoding="utf-8") as fh:
+                fh.write(f"\n=== {request.method} {request.url.path}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "message": "An unexpected error occurred", "details": {}},

@@ -1,4 +1,4 @@
-"""Synthetic demo workspace for Guest users.
+﻿"""Synthetic demo workspace for Guest users.
 
 Guests never see real data. A deterministic generator emulates two Jira boards (scrum + kanban) behind an
 httpx mock transport, and the ordinary pipeline (JiraDataSource -> InMemoryDataStore -> AnalyticsEngine) builds the
@@ -301,14 +301,25 @@ class _DemoRegistry(JiraBoardRegistry):
 
 
 def _demo_db(path: Path):
-    """Separate SQLite file for synthetic accounts / codes / boards. Rebuilt from the models on every start."""
+    """Separate SQLite file for synthetic accounts / codes / boards. Rebuilt from the models on every start.
+
+    The file is per process (``demo-<pid>.db``) so several workers / a second server never fight over one file
+    (on Windows an open SQLite file cannot be deleted). Stale files from earlier processes are removed when possible."""
+    import os
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from app.db.base import Base
     from app.db import models  # noqa: F401  (registers tables)
-    if path.exists():
-        path.unlink()  # demo state is disposable: start clean so presentations are predictable
-    engine = create_engine(f"sqlite:///{path.as_posix()}", future=True, connect_args={"check_same_thread": False})
+    folder = path.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in list(folder.glob("demo*.db")) + list(folder.glob("demo*.db-*")):
+        try:
+            old.unlink()  # demo state is disposable: start clean so presentations are predictable
+        except OSError:
+            pass  # still open by another live process; leave it alone
+    mine = folder / f"demo-{os.getpid()}.db"
+    engine = create_engine(f"sqlite:///{mine.as_posix()}", future=True, pool_size=20, max_overflow=60, pool_timeout=60,
+                           connect_args={"check_same_thread": False, "timeout": 30})
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 

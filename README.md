@@ -262,7 +262,7 @@ The global date filter (default **last 30 days**, inclusive) is applied server-s
 
 ## 🔐 Security, accounts and roles
 
-Accounts live in SQLite (`storage/app.db`, `EDD_DATABASE_URL` to change). Passwords are **Argon2id** hashes, sessions are **httpOnly JWT cookies** (`EDD_SESSION_HOURS`, default 8), five failed sign-ins lock the account for 15 minutes, every admin action is written to an **audit log**.
+Accounts live in SQLite (`storage/app.db`, `EDD_DATABASE_URL` to change). Passwords are **Argon2id** hashes (OWASP parameters t=2, m=19 MiB, p=1; older hashes upgrade on next login), sessions are **httpOnly JWT cookies** (`EDD_SESSION_HOURS`, default 8), five failed sign-ins lock the account for 15 minutes, every admin action is written to an **audit log**.
 
 ### Sign-up and approval flow
 
@@ -344,7 +344,7 @@ SSO accounts have no usable password; local passwords remain for guests, demo ac
 
 * **CSRF**: every state-changing `/api` request with a cookie session must carry an `Origin`/`Referer` from an allowed origin
   (`EDD_CORS_ORIGINS`, `EDD_PUBLIC_URL` or the API host itself); browsers always send it, cross-site forms get `403`. `EDD_CSRF_PROTECTION=0` disables.
-* **Rate limiting** per client IP: `EDD_RATE_LIMIT_AUTH_PER_MINUTE` (default 10) on login / sign-up / password reset / board-code redemption,
+* **Rate limiting** per client IP (login: per IP **and** account, so an office behind one NAT address is never locked out together): `EDD_RATE_LIMIT_AUTH_PER_MINUTE` (default 30) on login / sign-up / password reset / board-code redemption,
   `EDD_RATE_LIMIT_UPLOAD_PER_MINUTE` (default 6) on uploads -> `429` with `Retry-After`. In-process; put limits at the proxy for multi-node setups.
 * **Security headers**: `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
   `Strict-Transport-Security` when cookies are secure; every response carries an `X-Request-ID` for log correlation.

@@ -129,6 +129,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.limiter = SlidingWindowLimiter()
 
     @staticmethod
+    async def _login_email(request: Request) -> str:
+        try:
+            body = await request.body()
+            import json
+            return str(json.loads(body or b"{}").get("email", "")).strip().lower()[:120]
+        except Exception:  # noqa: BLE001
+            return ""
+
+    @staticmethod
     def _client(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
@@ -142,7 +151,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method == "POST" or path in self.SSO_PATHS:
             limit = self.auth_limit if path in self.AUTH_PATHS or path in self.SSO_PATHS else self.upload_limit if path in self.UPLOAD_PATHS else 0
             if limit > 0:
-                retry = self.limiter.allow(f"{path}|{self._client(request)}", limit)
+                key = f"{path}|{self._client(request)}"
+                if path == "/api/v1/auth/login":
+                    # offices share one NAT address: throttle per IP *and* account so one brute-forced login
+                    # cannot lock out everybody, while many colleagues signing in is fine (account lockout
+                    # after 5 failures still applies independently)
+                    key += "|" + await self._login_email(request)
+                retry = self.limiter.allow(key, limit)
                 if retry is not None:
                     return JSONResponse({"error": "rate_limited", "message": "Too many requests, try again shortly"},
                                         status_code=429, headers={"Retry-After": str(retry)})

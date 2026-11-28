@@ -145,6 +145,7 @@ def settings(tmp_path: Path, sample_data_dir: Path) -> Settings:
         snapshot_dir=tmp_path / "storage" / "snapshot",
         backup_dir=tmp_path / "storage" / "backups",
         rate_limit_auth_per_minute=1000,  # individual tests exercise the limiter explicitly
+        warm_up=False,
     )
 
 

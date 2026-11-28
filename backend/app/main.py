@@ -35,6 +35,29 @@ async def _watch_sources(interval: int = 15) -> None:
             log.exception("Source watch iteration failed")
 
 
+async def _warm_up() -> None:
+    """Pre-compute what the first users will ask for so a 9 a.m. login storm does not pay cold-start costs:
+    the demo workspace (guests / demo accounts) and the default-period overview + narrative of the real data."""
+    c = get_container()
+    try:
+        if settings.demo_accounts:
+            await asyncio.to_thread(lambda: c.demo().ensure_loaded())
+        from app.services.filter_service import Filters
+
+        def _warm(ws) -> None:
+            f = ws.analytics.resolve_filters(Filters())
+            ws.analytics.overview(f)
+            ws.narrative.summary(f)
+            ws.analytics.tickets_view(f, compact=True)
+        if c.store.is_loaded:
+            await asyncio.to_thread(_warm, c)
+        if settings.demo_accounts:
+            await asyncio.to_thread(_warm, c.demo())
+        log.info("Warm-up complete")
+    except Exception:
+        log.exception("Warm-up failed (non-fatal)")
+
+
 async def _nightly_backup() -> None:
     """Background task: one SQLite backup per day at settings.backup_hour_utc, pruned to settings.backup_keep."""
     from datetime import datetime, timedelta, timezone
@@ -86,6 +109,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await asyncio.to_thread(c.data.load_all, True, "startup")
         except Exception:
             log.exception("Initial load failed; the API will retry on first request")
+    if settings.warm_up:
+        asyncio.create_task(_warm_up())
     task = asyncio.create_task(_watch_sources())
     backup_task = asyncio.create_task(_nightly_backup())
     schedule_task = asyncio.create_task(_run_schedules())

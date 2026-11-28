@@ -44,3 +44,7 @@ storage/*.db*
 storage/demo/
 storage/backups/
 storage/snapshot/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

@@ -14,7 +14,7 @@ from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 # EDD_FAST_HASH=1 lowers the Argon2 cost for automated tests only; never set it in a real deployment.
 _ph = (PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1) if os.environ.get("EDD_FAST_HASH") == "1"
-       else PasswordHasher(time_cost=3, memory_cost=64 * 1024, parallelism=2))
+       else PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1))  # OWASP 2023 Argon2id minimum; argon2-cffi holds the GIL, so cheaper = more concurrent logins
 
 
 def hash_password(password: str) -> str:

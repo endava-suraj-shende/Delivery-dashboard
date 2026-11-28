@@ -18,9 +18,13 @@ _SessionLocal: sessionmaker[Session] | None = None
 
 
 def _make_engine(url: str) -> Engine:
-    kwargs = {}
+    kwargs: dict = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False, "timeout": 30}
+    if ":memory:" not in url:
+        # every request holds a session for its whole duration; size the pool for the uvicorn thread pool (40)
+        # plus background tasks, otherwise a burst of slow requests turns into QueuePool timeouts (500s)
+        kwargs.update(pool_size=20, max_overflow=60, pool_timeout=60, pool_recycle=1800)
     engine = create_engine(url, future=True, pool_pre_ping=True, **kwargs)
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

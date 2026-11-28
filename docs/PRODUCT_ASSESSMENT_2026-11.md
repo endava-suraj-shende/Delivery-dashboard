@@ -405,6 +405,11 @@ No claim above about *future* numbers is measured; the "expected impact" column 
 > Dockerfile/compose). From P1: persisted data snapshot (startup 51 s ? 4 s measured), DB-backed report registry scoped per user,
 > compact/paginated ticket + deployment payloads (dev summary 761 ? 325 KB), rule-based narrative + anomaly flags on Overview and
 > Employee pages, missing DB indexes (migration 0007). SSO (OIDC / Entra ID) shipped later the same day. Navigation 15?7 (grouped sidebar) and the 5-KPI Overview shipped as well. Scheduled digest e-mails shipped (migration 0008, Reports page). Typed response contracts (Pydantic `response_model`, additive-safe) now cover the 13 highest-traffic endpoints. **All P0 and P1 items are complete.** P2 progress: Monte-Carlo forecast shipped (Overview, Sprint page, PDF). Saved views / share links shipped (migration 0009). Reconciliation workflow shipped (migration 0010). **All engineering items from P0?P2 are complete**; the remaining P2 item is organisational: a pilot with 3?5 delivery managers to measure hours saved.
+>
+> **Pilot hardening (same day):** 10-scenario Playwright e2e suite (in CI) and a 50-user load test (`backend/tools/loadtest.py`).
+> The load test found and fixed four real defects: thundering-herd recomputation (now single-flight cache), SQLAlchemy pool
+> exhaustion under 50 concurrent requests (pool 20+60), a demo-DB file clash across processes (per-process file), and
+> GIL-serialised Argon2 at above-OWASP cost (now OWASP parameters). Result: 50 users, p50 54 ms, p95 374 ms, 0 errors.
 
 ### P0 — critical / blockers (30 days)
 

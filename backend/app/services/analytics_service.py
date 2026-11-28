@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from collections import OrderedDict
 from datetime import date
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -115,6 +116,10 @@ class AnalyticsEngine:
         self.default_days = default_days
         self._cache: "OrderedDict[str, Any]" = OrderedDict()
         self._cache_limit = 256
+        # single-flight: concurrent requests for the same uncached key wait for one computation instead of
+        # all running the (GIL-bound) pandas aggregation at once
+        self._inflight: Dict[str, threading.Lock] = {}
+        self._inflight_guard = threading.Lock()
         self.source_mode: Callable[[], str] = lambda: "excel"
         # Optional provider of board members (board labels -> people); None = not available (Excel mode).
         self.board_members: Callable[[List[str]], Optional[List[str]]] = lambda _boards: None
@@ -128,15 +133,26 @@ class AnalyticsEngine:
         return CALCULATION_RULES
 
     # ------------------------------------------------------------------ cache
+    _MISSING = object()
+
     def _cached(self, key: str, builder):
         full = f"{self.store.version}:{self.normalizer.config.latest_status_rule}:{self.source_mode()}:{key}"
-        if full in self._cache:
+        hit = self._cache.get(full, self._MISSING)
+        if hit is not self._MISSING:
             self._cache.move_to_end(full)
-            return self._cache[full]
-        value = builder()
-        self._cache[full] = value
-        if len(self._cache) > self._cache_limit:
-            self._cache.popitem(last=False)
+            return hit
+        with self._inflight_guard:
+            lock = self._inflight.setdefault(full, threading.Lock())
+        with lock:
+            hit = self._cache.get(full, self._MISSING)
+            if hit is not self._MISSING:
+                return hit
+            value = builder()
+            self._cache[full] = value
+            while len(self._cache) > self._cache_limit:
+                self._cache.popitem(last=False)
+        with self._inflight_guard:
+            self._inflight.pop(full, None)
         return value
 
     def invalidate(self) -> None:

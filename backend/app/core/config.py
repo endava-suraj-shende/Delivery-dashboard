@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     sso_allow_local_login: bool = True    # False = hide e-mail/password form (guests/demo/admins can still POST /auth/login)
     # Perimeter hardening
     csrf_protection: bool = True
-    rate_limit_auth_per_minute: int = 10      # per client IP on /auth/login, /auth/signup, /auth/forgot-password
+    rate_limit_auth_per_minute: int = 30      # per client IP (login: per IP+account) on /auth/login, /auth/signup, /auth/forgot-password
     rate_limit_upload_per_minute: int = 6
     security_headers: bool = True
     # Persist the parsed data snapshot so restarts do not wait for Jira
@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     # Self-healing accounts: the demo-only logins are (re)created on every start so a lost / fresh database
     # never breaks demos; a bootstrap superuser is created when both values are set (e.g. first deployment).
     demo_accounts: bool = True
+    warm_up: bool = True  # pre-build demo workspace + default views at start-up (off in tests)
     bootstrap_superuser_email: str = ""
     bootstrap_superuser_password: str = ""
     # Resend (https://resend.com). Without an API key links are written to the log (and returned in local env).
