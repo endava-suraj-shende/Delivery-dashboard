@@ -82,6 +82,35 @@ class AnomalyService:
         elif group_by == "jira_board":
             groups += sorted({b for bs in tickets["jira_boards"] for b in (bs or [])})
         items: List[Dict[str, Any]] = []
+
+        # Human description of each scope so a row never just says "Team"
+        all_boards = sorted({b for bs in tickets["jira_boards"] for b in (bs or [])}) if "jira_boards" in tickets.columns else []
+        all_projects = sorted({p for ps in tickets.get("projects", pd.Series(dtype=object)) for p in (ps or [])}) if "projects" in tickets.columns else []
+        people_n = int(tickets["latest_employee"].dropna().loc[lambda x: x != "Unassigned"].nunique()) if "latest_employee" in tickets.columns else 0
+
+        def team_detail() -> str:
+            if f.jira_board:
+                return "Board" + ("s" if len(f.jira_board) > 1 else "") + ": " + ", ".join(f.jira_board)
+            if f.project:
+                return "Project" + ("s" if len(f.project) > 1 else "") + ": " + ", ".join(f.project)
+            if len(all_boards) == 1:
+                return f"Board: {all_boards[0]}"
+            return f"Whole team - {people_n} people across {len(all_boards)} boards" if all_boards else f"Whole team - {people_n} people"
+
+        def person_detail(name: str) -> str:
+            tt = tickets[tickets["latest_employee"] == name]
+            boards = sorted({b for bs in tt["jira_boards"] for b in (bs or [])}) if "jira_boards" in tt.columns else []
+            projects = sorted({p for ps in tt["projects"] for p in (ps or [])}) if "projects" in tt.columns else []
+            parts = [", ".join(projects[:2]) if projects else None, ", ".join(boards[:2]) if boards else None]
+            return " - ".join(x for x in parts if x) or "No board recorded"
+
+        def board_detail(name: str) -> str:
+            tt = tickets[tickets["jira_board"].str.contains(name, regex=False, na=False)]
+            projects = sorted({p for ps in tt["projects"] for p in (ps or [])}) if "projects" in tt.columns else []
+            n = int(tt["latest_employee"].dropna().nunique()) if "latest_employee" in tt.columns else 0
+            return (", ".join(projects[:2]) + " - " if projects else "") + f"{n} people"
+
+        team_label = team_detail()
         for g in groups[:60]:
             s = series_for(g)
             label = g or "Team"
@@ -99,7 +128,8 @@ class AnomalyService:
                     continue
                 med = float(np.median(arr[:-1]))
                 direction_word = "down" if z < 0 else "up"
-                items.append({"scope": label, "group_by": group_by if g else "team", "metric": metric, "metric_label": human,
+                detail = team_label if g is None else (person_detail(g) if group_by == "employee" else board_detail(g))
+                items.append({"scope": label, "group_by": group_by if g else "team", "metric": metric, "metric_label": human, "detail": detail,
                               "week": weeks[-1].date().isoformat(), "value": float(arr[-1]), "baseline_median": med, "z": round(float(z), 2),
                               "baseline_min": float(arr[:-1].min()), "baseline_max": float(arr[:-1].max()), "baseline_weeks": int(len(arr) - 1),
                               "history": [{"week": w.date().isoformat(), "value": float(v)} for w, v in zip(weeks, arr)],

@@ -169,90 +169,114 @@ export default function IntelligencePage() {
 }
 
 // ---------------------------------------------------------------------------------------------- daily briefing
-type BriefTone = 'blue' | 'red' | 'amber' | 'purple' | 'sky'
-type BriefItem = { kind: string; label: string; icon: typeof Sparkles; tone: BriefTone; text: string; metric?: string; tab: TabKey }
-const BRIEF_TONE: Record<BriefTone, string> = {
-  blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  red: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  purple: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
-  sky: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+type BriefStep = { kind: 'urgent' | 'action' | 'owner' | 'warning'; title: string; text: string; sub?: string; cta: string; tab: TabKey; icon: typeof Sparkles; tone: string }
+const HEALTH = {
+  red: { label: 'Needs attention', text: 'More than half of the open work is likely to be late.', cls: 'text-red-600 dark:text-red-300', bg: 'bg-red-500', ring: 'ring-red-500/30' },
+  amber: { label: 'Watch closely', text: 'A sizeable share of the open work is likely to be late.', cls: 'text-amber-600 dark:text-amber-300', bg: 'bg-amber-500', ring: 'ring-amber-500/30' },
+  green: { label: 'On track', text: 'Most open work is on course to land on time.', cls: 'text-emerald-600 dark:text-emerald-300', bg: 'bg-emerald-500', ring: 'ring-emerald-500/30' },
 }
 
 /**
  * The page's signature feature: the three analyses (risk, actions, warnings) fused into what a delivery manager
- * would say at stand-up. Composed from engine figures only, so it is always consistent with the tabs below.
+ * would say at stand-up. Left: delivery health at a glance. Right: a numbered "what to do" list, one sentence each.
+ * Composed from engine figures only, so it is always consistent with the tabs below.
  */
 function DailyBriefing({ risk, actions, warnings, loading, onGo }: {
   risk?: RiskResponse; actions?: RecommendationsResponse; warnings?: AnomaliesResponse; loading: boolean; onGo: (t: TabKey) => void
 }) {
   const [copied, setCopied] = useState(false)
-  const items = useMemo<BriefItem[]>(() => {
-    if (!risk) return []
-    const s = risk.summary
-    if (!s.open) return [{ kind: 'scope', label: 'Scope', icon: ListChecks, tone: 'blue', text: 'No open tickets in this scope - nothing to score.', tab: 'risk' }]
-    const out: BriefItem[] = [{
-      kind: 'scope', label: 'Where we stand', icon: Gauge, tone: 'blue', tab: 'risk', metric: `${s.high} high`,
-      text: `${plural(s.open, 'open ticket')} in scope: ${s.high} high risk, ${s.medium} medium. About ${Math.round(s.expected_slips ?? 0)} are expected to slip at the current pace.`,
-    }]
+  const s = risk?.summary
+  const highShare = s && s.open ? s.high / s.open : 0
+  const health = HEALTH[highShare > 0.5 ? 'red' : highShare > 0.25 ? 'amber' : 'green']
+
+  const steps = useMemo<BriefStep[]>(() => {
+    if (!risk || !risk.summary.open) return []
+    const out: BriefStep[] = []
     const top = risk.items[0]
     if (top) {
       const why = top.factors.map(describeFactor).filter(Boolean).slice(0, 2).join(', ')
-      out.push({ kind: 'urgent', label: 'Most urgent', icon: AlertTriangle, tone: 'red', tab: 'risk', metric: top.ticket_id, text: `${top.ticket_id}${top.employee ? ` (${top.employee})` : ''} at ${pct(top.risk)}${why ? ` - ${why}` : ''}.` })
-    }
-    const owner = risk.by_employee?.[0]
-    if (owner && owner.high >= 3 && s.high && owner.high / s.high >= 0.2) {
-      out.push({ kind: 'owner', label: 'Concentration', icon: TrendingUp, tone: 'amber', tab: 'risk', metric: pct(owner.high / s.high), text: `${owner.employee} holds ${owner.high} of the ${s.high} high-risk tickets.` })
+      out.push({ kind: 'urgent', icon: AlertTriangle, tone: 'bg-red-500/10 text-red-600 dark:text-red-400', tab: 'risk', cta: 'See all risk scores',
+        title: 'Most likely to be late', text: `${top.ticket_id}${top.employee ? ` - ${top.employee}` : ''} - ${pct(top.risk)} likely to slip`, sub: why ? why.charAt(0).toUpperCase() + why.slice(1) : undefined })
     }
     const act = actions?.items[0]
-    if (act) out.push({ kind: 'action', label: 'First action', icon: ListChecks, tone: 'purple', tab: 'actions', metric: URGENCY[act.priority]?.label, text: `${act.title}.` })
+    if (act) out.push({ kind: 'action', icon: ListChecks, tone: 'bg-purple-500/10 text-purple-600 dark:text-purple-400', tab: 'actions', cta: 'See all actions', title: 'Do this first', text: act.title, sub: act.effect ?? undefined })
+    const owner = risk.by_employee?.[0]
+    if (owner && owner.high >= 3 && risk.summary.high && owner.high / risk.summary.high >= 0.2) {
+      out.push({ kind: 'owner', icon: TrendingUp, tone: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', tab: 'risk', cta: 'See by assignee', title: 'Risk is concentrated', text: `${owner.employee} holds ${owner.high} of the ${risk.summary.high} high-risk tickets (${pct(owner.high / risk.summary.high)})`, sub: 'Consider sharing the load or clearing blockers for this person first.' })
+    }
     const warn = warnings?.items[0]
-    if (warn) out.push({ kind: 'warning', label: 'Early warning', icon: Activity, tone: 'sky', tab: 'warnings', metric: `${warn.direction === 'up' ? '+' : ''}${Math.round(((warn.value - warn.baseline_median) / Math.max(1, warn.baseline_median)) * 100)}%`, text: `${warn.scope}: ${warn.metric_label} ${warn.direction === 'up' ? 'jumped to' : 'dropped to'} ${warn.value} against a usual ${Math.round(warn.baseline_median)}.` })
+    if (warn) {
+      const change = Math.round(((warn.value - warn.baseline_median) / Math.max(1, warn.baseline_median)) * 100)
+      out.push({ kind: 'warning', icon: Activity, tone: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', tab: 'warnings', cta: 'See early warnings',
+        title: 'Something changed this week', text: `${warn.scope}: ${warn.metric_label} ${warn.direction === 'up' ? 'up' : 'down'} ${Math.abs(change)}% (${warn.value} vs a usual ${Math.round(warn.baseline_median)})`, sub: warn.meaning })
+    }
     return out
   }, [risk, actions, warnings])
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(items.map((l) => `${l.label}: ${l.text}`).join('\n'))
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch { /* clipboard unavailable */ }
+    if (!s) return
+    const lines = [`Delivery health: ${health.label}. ${plural(s.open, 'open ticket')}, ${s.high} high risk, about ${Math.round(s.expected_slips ?? 0)} expected to slip.`, ...steps.map((x, i) => `${i + 1}. ${x.title}: ${x.text}${x.sub ? ` (${x.sub})` : ''}`)]
+    try { await navigator.clipboard.writeText(lines.join('\n')); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* clipboard unavailable */ }
   }
 
   return (
     <Card className="overflow-hidden border-primary/25 animate-in fade-in-0 slide-in-from-bottom-2 duration-500" data-testid="daily-briefing">
-      <div className="h-1 bg-gradient-to-r from-primary via-purple-500 to-sky-500" aria-hidden />
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" aria-hidden /> Daily briefing</CardTitle>
-          <CardDescription>Stand-up ready: where we stand, what is most urgent, the first thing to do and anything unusual - {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}.</CardDescription>
+          <CardDescription>Your stand-up in 30 seconds - {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</CardDescription>
         </div>
-        <Button size="sm" variant="outline" onClick={copy} disabled={!items.length} aria-label="Copy briefing">
+        <Button size="sm" variant="outline" onClick={copy} disabled={!s} aria-label="Copy briefing">
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
         </Button>
       </CardHeader>
       <CardContent className="pt-0">
-        {loading && !items.length ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-lg bg-muted/60" />)}</div>
+        {loading && !s ? (
+          <div className="grid gap-4 lg:grid-cols-[300px_1fr]"><div className="h-40 animate-pulse rounded-lg bg-muted/60" /><div className="h-40 animate-pulse rounded-lg bg-muted/60" /></div>
+        ) : !s || !s.open ? (
+          <p className="text-sm text-muted-foreground">No open tickets in this scope - nothing to brief.</p>
         ) : (
-          <ol className={cn('grid gap-3 sm:grid-cols-2', items.length >= 5 ? 'xl:grid-cols-5' : items.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3')}>
-            {items.map((it, i) => {
-              const Icon = it.icon
-              return (
-                <li key={it.kind} className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400" style={{ animationDelay: `${120 + i * 90}ms` }}>
-                  <button type="button" onClick={() => onGo(it.tab)} className="group flex h-full w-full flex-col rounded-lg border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary" title="Open the related tab">
-                    <div className="flex items-center gap-2">
-                      <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md', BRIEF_TONE[it.tone])}><Icon className="h-4 w-4" aria-hidden /></span>
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{it.label}</span>
-                      {it.metric && <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums">{it.metric}</span>}
+          <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+            {/* ---- health panel */}
+            <button type="button" onClick={() => onGo('risk')} className={cn('group flex flex-col rounded-lg border bg-gradient-to-br from-muted/40 to-transparent p-4 text-left ring-4 transition-all hover:border-primary/40 hover:shadow-md focus:outline-none focus-visible:ring-primary', health.ring)} title="Open risk scores">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Delivery health</p>
+              <p className={cn('mt-1 flex items-center gap-2 text-xl font-semibold', health.cls)}><span className={cn('h-3 w-3 rounded-full', health.bg)} aria-hidden />{health.label}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{health.text}</p>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                {[{ v: s.open, l: 'open' }, { v: s.high, l: 'high risk' }, { v: Math.round(s.expected_slips ?? 0), l: 'may slip' }].map((k) => (
+                  <div key={k.l} className="rounded-md bg-background/70 px-1 py-2"><p className="text-xl font-semibold tabular-nums leading-none">{k.v}</p><p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">{k.l}</p></div>
+                ))}
+              </div>
+              <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-label={`${s.high} high, ${s.medium} medium, ${s.low} low risk`}>
+                <span className="h-full bg-red-500 transition-[width] duration-700" style={{ width: pct(s.high / s.open) }} />
+                <span className="h-full bg-amber-500 transition-[width] duration-700" style={{ width: pct(s.medium / s.open) }} />
+                <span className="h-full bg-emerald-500 transition-[width] duration-700" style={{ width: pct(s.low / s.open) }} />
+              </div>
+              <p className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span><span className="text-red-600 dark:text-red-300">{pct(highShare)}</span> high</span><span>{pct(s.medium / s.open)} medium</span><span>{pct(s.low / s.open)} low</span></p>
+            </button>
+
+            {/* ---- what to do */}
+            <ol className="space-y-2">
+              {steps.map((st, i) => {
+                const Icon = st.icon
+                return (
+                  <li key={st.kind} className="animate-in fade-in-0 slide-in-from-right-2 fill-mode-backwards duration-400" style={{ animationDelay: `${150 + i * 90}ms` }}>
+                    <div className="flex items-start gap-3 rounded-lg border bg-card p-3 transition-colors hover:border-primary/30">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground" aria-label={`Step ${i + 1}`}>{i + 1}</span>
+                      <span className={cn('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md', st.tone)}><Icon className="h-3.5 w-3.5" aria-hidden /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{st.title}</p>
+                        <p className="text-sm font-medium leading-snug">{st.text}</p>
+                        {st.sub && <p className="mt-0.5 text-xs text-muted-foreground">{st.sub}</p>}
+                      </div>
+                      <Button size="sm" variant="ghost" className="h-7 shrink-0 text-xs text-primary" onClick={() => onGo(st.tab)}>{st.cta} &rarr;</Button>
                     </div>
-                    <p className="mt-2 text-sm leading-snug">{it.text}</p>
-                    <span className="mt-auto pt-2 text-[11px] text-primary opacity-0 transition-opacity group-hover:opacity-100">Open &rarr;</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ol>
+                  </li>
+                )
+              })}
+              {!steps.length && <li className="rounded-lg border bg-card p-3 text-sm text-muted-foreground">Nothing stands out today - no urgent tickets, actions or unusual movements.</li>}
+            </ol>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -626,90 +650,114 @@ const SEV_ICON: Record<AnomalyItem['severity'], { cls: string; label: string }> 
   warning: { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', label: 'Notable' },
   info: { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', label: 'Minor' },
 }
-const SCOPE_KIND: Record<string, string> = { team: 'Team', employee: 'Person', jira_board: 'Board' }
 
 /**
  * One row per flagged series. Every column answers a concrete question: who, what metric, what it did,
  * what the number was this week, what it usually is (median of the previous weeks and their range), and the trend.
  */
+const MOVEMENT_GROUPS: { key: string; title: string; hint: string; dot: string }[] = [
+  { key: 'team', title: 'Whole team', hint: 'Everything in the current filter scope added together', dot: 'bg-primary' },
+  { key: 'employee', title: 'People', hint: 'One series per person - click a name to open their page', dot: 'bg-purple-500' },
+  { key: 'jira_board', title: 'Boards', hint: 'One series per Jira board', dot: 'bg-sky-500' },
+]
+
 function UnusualMovements({ items, weeks, onOpenPerson }: { items: AnomalyItem[]; weeks: number; onOpenPerson: (name: string) => void }) {
   const [metric, setMetric] = useState<string>('all')
   const metrics = useMemo(() => [...new Set(items.map((i) => i.metric))], [items])
   const rows = items.filter((i) => metric === 'all' || i.metric === metric)
   const baselineWeeks = items[0]?.baseline_weeks ?? weeks
+  const teamDetail = items.find((i) => i.group_by === 'team')?.detail
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-base">Unusual movements{items.length ? ` (${items.length})` : ''}</CardTitle>
-            <CardDescription>
-              For every team member, board and the team as a whole, four weekly counts are tracked: <b>tickets started</b>, <b>tickets completed</b>, <b>tickets blocked</b> and <b>status updates</b>.
-              A row appears when <b>this week's count</b> is far outside what that same series did over the <b>previous {baselineWeeks} weeks</b> ("Usual" = the median of those weeks; the range shows their lowest and highest).
-            </CardDescription>
-          </div>
-          {metrics.length > 1 && (
-            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by metric">
-              <Button size="sm" variant={metric === 'all' ? 'default' : 'outline'} onClick={() => setMetric('all')}>All</Button>
-              {metrics.map((m) => <Button key={m} size="sm" variant={metric === m ? 'default' : 'outline'} onClick={() => setMetric(m)} className="capitalize">{m === 'activity' ? 'Status updates' : m}</Button>)}
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-base">Unusual movements{items.length ? ` (${items.length})` : ''}</CardTitle>
+              <CardDescription>
+                Four weekly counts are tracked for the whole team, for each person and for each board: <b>tickets started</b>, <b>tickets completed</b>, <b>tickets blocked</b> and <b>status updates</b>.
+                A row appears when <b>this week's count</b> is far outside what that same series did over the <b>previous {baselineWeeks} weeks</b> ("Usual" = the median of those weeks; the range shows their lowest and highest).
+                {teamDetail && <> Scope: <b>{teamDetail}</b>.</>}
+              </CardDescription>
             </div>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        {rows.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="anomaly-list">
-              <thead>
-                <tr className="border-b-2 border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2 text-left">Who</th>
-                  <th className="px-3 py-2 text-left">What happened</th>
-                  <th className="px-3 py-2 text-right">This week</th>
-                  <th className="px-3 py-2 text-right">Usual</th>
-                  <th className="px-3 py-2 text-right">Change</th>
-                  <th className="px-3 py-2 text-left">Trend ({baselineWeeks + 1} wks)</th>
-                  <th className="px-3 py-2 text-left">Strength</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a, i) => {
-                  const sev = SEV_ICON[a.severity]
-                  const base = Math.max(1, a.baseline_median)
-                  const change = Math.round(((a.value - a.baseline_median) / base) * 100)
-                  const good = (a.metric === 'blocked' && a.direction === 'down') || (a.metric !== 'blocked' && a.direction === 'up' && a.metric !== 'started')
-                  const clickable = a.group_by === 'employee'
-                  return (
-                    <tr key={`${a.scope}-${a.metric}-${a.week}`} onClick={clickable ? () => onOpenPerson(a.scope) : undefined}
-                      className={cn('border-b border-border/60 odd:bg-background even:bg-muted/20 transition-colors hover:bg-primary/[0.06]', clickable && 'cursor-pointer', rowEntrance(i))}>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', sev.cls)}>{a.direction === 'up' ? <ArrowUpRight className="h-4 w-4" aria-label="up" /> : <ArrowDownRight className="h-4 w-4" aria-label="down" />}</span>
-                          <div className="min-w-0">
-                            <p className={cn('truncate font-medium', clickable && 'text-primary')}>{a.scope}</p>
-                            <p className="text-[11px] text-muted-foreground">{SCOPE_KIND[a.group_by] ?? a.group_by}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="max-w-[320px] px-3 py-2.5">
-                        <p className="font-medium">{a.metric_label.charAt(0).toUpperCase() + a.metric_label.slice(1)} {a.direction === 'up' ? 'went up' : 'went down'}</p>
-                        <p className="text-xs text-muted-foreground">{a.meaning ?? a.text}</p>
-                      </td>
-                      <td className="px-3 py-2.5 text-right"><span className={cn('text-base font-semibold tabular-nums', good ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{a.value}</span><p className="text-[10px] text-muted-foreground">week of {fmtDate(a.week)}</p></td>
-                      <td className="px-3 py-2.5 text-right"><span className="font-medium tabular-nums">{Math.round(a.baseline_median)}</span>{a.baseline_min !== undefined && a.baseline_max !== undefined && <p className="text-[10px] tabular-nums text-muted-foreground">range {a.baseline_min}-{a.baseline_max}</p>}</td>
-                      <td className="px-3 py-2.5 text-right"><span className={cn('inline-block rounded border px-1.5 py-0.5 text-xs font-semibold tabular-nums', good ? BAND_CLS.low : BAND_CLS.high)}>{change > 0 ? '+' : ''}{change}%</span></td>
-                      <td className="px-3 py-2.5"><HistorySparkline history={a.history ?? []} good={good} /></td>
-                      <td className="px-3 py-2.5"><span className={cn('inline-block rounded px-1.5 py-0.5 text-xs font-medium', sev.cls)} title={`Robust z-score ${a.z > 0 ? '+' : ''}${a.z.toFixed(1)}`}>{sev.label}</span></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {metrics.length > 1 && (
+              <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by metric">
+                <Button size="sm" variant={metric === 'all' ? 'default' : 'outline'} onClick={() => setMetric('all')}>All</Button>
+                {metrics.map((m) => <Button key={m} size="sm" variant={metric === m ? 'default' : 'outline'} onClick={() => setMetric(m)} className="capitalize">{m === 'activity' ? 'Status updates' : m}</Button>)}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="p-4"><EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} /></div>
-        )}
-      </CardContent>
-    </Card>
+        </CardHeader>
+      </Card>
+
+      {!rows.length && <Card><CardContent className="p-4"><EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} /></CardContent></Card>}
+
+      {MOVEMENT_GROUPS.map((g, gi) => {
+        const group = rows.filter((r) => r.group_by === g.key)
+        if (!group.length) return null
+        return (
+          <Card key={g.key} className="min-w-0 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400" style={{ animationDelay: `${gi * 100}ms` }} data-testid={gi === 0 ? 'anomaly-list' : undefined}>
+            <CardHeader className="flex flex-row items-center gap-3 space-y-0 py-3">
+              <span className={cn('h-2.5 w-2.5 rounded-full', g.dot)} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-base">{g.title} <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{group.length}</span></CardTitle>
+                <CardDescription>{g.hint}</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-y border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 text-left">{g.key === 'team' ? 'Scope' : g.key === 'employee' ? 'Person' : 'Board'}</th>
+                      <th className="px-3 py-2 text-left">What happened</th>
+                      <th className="px-3 py-2 text-right">This week</th>
+                      <th className="px-3 py-2 text-right">Usual</th>
+                      <th className="px-3 py-2 text-right">Change</th>
+                      <th className="px-3 py-2 text-left">Trend ({baselineWeeks + 1} wks)</th>
+                      <th className="px-3 py-2 text-left">Strength</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.map((a, i) => {
+                      const sev = SEV_ICON[a.severity]
+                      const base = Math.max(1, a.baseline_median)
+                      const change = Math.round(((a.value - a.baseline_median) / base) * 100)
+                      const good = (a.metric === 'blocked' && a.direction === 'down') || (a.metric !== 'blocked' && a.direction === 'up' && a.metric !== 'started')
+                      const clickable = a.group_by === 'employee'
+                      return (
+                        <tr key={`${a.scope}-${a.metric}-${a.week}`} onClick={clickable ? () => onOpenPerson(a.scope) : undefined}
+                          className={cn('border-b border-border/60 odd:bg-background even:bg-muted/20 transition-colors hover:bg-primary/[0.06]', clickable && 'cursor-pointer', rowEntrance(i))}>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', sev.cls)}>{a.direction === 'up' ? <ArrowUpRight className="h-4 w-4" aria-label="up" /> : <ArrowDownRight className="h-4 w-4" aria-label="down" />}</span>
+                              <div className="min-w-[160px] max-w-[260px]">
+                                <p className={cn('font-medium leading-snug', clickable && 'text-primary')} title={a.scope}>{a.group_by === 'team' ? (a.detail ?? 'Whole team') : a.scope}</p>
+                                {a.group_by !== 'team' && a.detail && <p className="truncate text-[11px] text-muted-foreground" title={a.detail}>{a.detail}</p>}
+                                {a.group_by === 'team' && <p className="text-[11px] text-muted-foreground">All people and boards in scope</p>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="max-w-[320px] px-3 py-2.5">
+                            <p className="font-medium">{a.metric_label.charAt(0).toUpperCase() + a.metric_label.slice(1)} {a.direction === 'up' ? 'went up' : 'went down'}</p>
+                            <p className="text-xs text-muted-foreground">{a.meaning ?? a.text}</p>
+                          </td>
+                          <td className="px-3 py-2.5 text-right"><span className={cn('text-base font-semibold tabular-nums', good ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{a.value}</span><p className="text-[10px] text-muted-foreground">week of {fmtDate(a.week)}</p></td>
+                          <td className="px-3 py-2.5 text-right"><span className="font-medium tabular-nums">{Math.round(a.baseline_median)}</span>{a.baseline_min !== undefined && a.baseline_max !== undefined && <p className="text-[10px] tabular-nums text-muted-foreground">range {a.baseline_min}-{a.baseline_max}</p>}</td>
+                          <td className="px-3 py-2.5 text-right"><span className={cn('inline-block rounded border px-1.5 py-0.5 text-xs font-semibold tabular-nums', good ? BAND_CLS.low : BAND_CLS.high)}>{change > 0 ? '+' : ''}{change}%</span></td>
+                          <td className="px-3 py-2.5"><HistorySparkline history={a.history ?? []} good={good} /></td>
+                          <td className="px-3 py-2.5"><span className={cn('inline-block rounded px-1.5 py-0.5 text-xs font-medium', sev.cls)} title={`Robust z-score ${a.z > 0 ? '+' : ''}${a.z.toFixed(1)}`}>{sev.label}</span></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
   )
 }
 

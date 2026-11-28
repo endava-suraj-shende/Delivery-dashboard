@@ -252,6 +252,7 @@ export interface AnomalyItem {
   baseline_weeks?: number
   history?: { week: string; value: number }[]
   meaning?: string
+  detail?: string
   direction: 'up' | 'down'
   severity: 'danger' | 'warning' | 'info'
   text: string
