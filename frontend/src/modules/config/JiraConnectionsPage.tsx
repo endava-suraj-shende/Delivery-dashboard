@@ -146,11 +146,11 @@ export default function JiraConnectionsPage() {
                       <div className="mt-2 grid gap-3 md:grid-cols-2">
                         <div>
                           <Label>Environment variable holding the email</Label>
-                          <Input value={emailEnv} onChange={(e) => setEmailEnv(e.target.value)} placeholder="EDD_JIRA_EMAIL_FLYWHEEL" className="mt-1 h-8" />
+                          <Input value={emailEnv} onChange={(e) => setEmailEnv(e.target.value)} placeholder="EDD_JIRA_EMAIL_<SITE>" className="mt-1 h-8" />
                         </div>
                         <div>
                           <Label>Environment variable holding the API token</Label>
-                          <Input value={tokenEnv} onChange={(e) => setTokenEnv(e.target.value)} placeholder="EDD_JIRA_TOKEN_FLYWHEEL" className="mt-1 h-8" />
+                          <Input value={tokenEnv} onChange={(e) => setTokenEnv(e.target.value)} placeholder="EDD_JIRA_TOKEN_<SITE>" className="mt-1 h-8" />
                         </div>
                       </div>
                     </details>
