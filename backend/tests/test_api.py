@@ -283,3 +283,27 @@ def test_forecast_endpoint_shapes(client):
         assert d["completion"]["percentiles"][0]["p"] == 50 and d["by_date"]["date"] == "2030-01-01"
     r2 = client.get("/api/v1/dashboard/forecast", params={**ALL, "remaining": 0})
     assert r2.json()["remaining"] == 0
+
+
+def test_saved_views_crud_and_sharing(client, anon):
+    r = client.post("/api/v1/views", json={"name": "Blocked this month", "path": "/jira", "query": "?status=blocked&preset=last_30_days", "shared": False})
+    assert r.status_code == 200, r.text
+    v = r.json()
+    assert v["url"] == "/jira?status=blocked&preset=last_30_days" and v["mine"] is True and v["shared"] is False
+    assert client.post("/api/v1/views", json={"name": "x", "path": "../etc", "query": ""}).status_code == 422
+    # another user cannot see a private view, but sees it once shared
+    import app.services.container as cm
+    from app.db.models import User, utcnow
+    from app.core.security import hash_password
+    cont = cm.get_container()
+    with cont.db() as db:
+        db.add(User(email="viewer.dm@endava.com", name="Viewer", password_hash=hash_password("Strong-Pass-123!"), role="dm", requested_role="dm",
+                    status="active", email_verified_at=utcnow(), approved_at=utcnow()))
+        db.commit()
+    anon.post("/api/v1/auth/login", json={"email": "viewer.dm@endava.com", "password": "Strong-Pass-123!"})
+    assert all(i["id"] != v["id"] for i in anon.get("/api/v1/views").json()["items"])
+    assert client.patch(f"/api/v1/views/{v['id']}", json={"shared": True}).json()["shared"] is True
+    shared = [i for i in anon.get("/api/v1/views").json()["items"] if i["id"] == v["id"]]
+    assert shared and shared[0]["mine"] is False and shared[0]["owner"]["email"] == "admin@endava.com"
+    assert anon.delete(f"/api/v1/views/{v['id']}").status_code == 404  # not the owner
+    assert client.delete(f"/api/v1/views/{v['id']}").json()["ok"] is True

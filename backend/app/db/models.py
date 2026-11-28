@@ -329,3 +329,21 @@ class ReportSchedule(Base):
                 "active": self.active, "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
                 "last_status": self.last_status, "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
                 "created_at": self.created_at.isoformat()}
+
+
+class SavedView(Base):
+    """A named page + filter combination. Shared views are visible to every signed-in viewer; data stays role-scoped."""
+    __tablename__ = "saved_views"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"id": self.id, "owner_id": self.owner_id, "name": self.name, "path": self.path, "query": self.query,
+                "shared": self.shared, "created_at": self.created_at.isoformat(), "updated_at": self.updated_at.isoformat()}

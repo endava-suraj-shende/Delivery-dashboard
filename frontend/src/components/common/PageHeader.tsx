@@ -8,6 +8,7 @@ import { NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/primitives'
 import { MultiSelect } from '@/components/common/MultiSelect'
 import { PRESET_LABELS, useFilters, type ListKey, type PresetKey } from '@/hooks/useFilters'
+import { SavedViews } from '@/components/common/SavedViews'
 import { useDimensions } from '@/hooks/useData'
 import { fmtDate, colorFor } from '@/lib/utils'
 import { FEATURES } from '@/lib/features'
@@ -157,6 +158,7 @@ export function GlobalFilterBar({ showStatus = true, showDeployment = true, comp
             <X /> Clear all filters
           </Button>
         )}
+        <div className="ml-auto"><SavedViews /></div>
       </div>
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">

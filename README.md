@@ -436,6 +436,7 @@ All endpoints live under `/api/v1` and are documented interactively at `/docs`. 
 | `deployment` | `dev/summary`, `production/summary`, `trends` | viewers |
 | `reports` | `types`, `generate`, `employee`, `team`, `project`, `management`, `download/{id}`, `schedules` (CRUD, `preview`, `send-now`) | DM / admin |
 | `config` | `status` (GET/PUT, `mapping`, `reset`), `app` | superuser |
+| `views` | saved views: list / create / update (share) / delete | signed-in |
 | `search`, `meta` | global search, `dimensions`, `presets` | viewers |
 
 Query parameters: `start_date`, `end_date`, `preset`, `employee`, `project`, `application`, `jira_board`, `sprint`, `status`, `work_type`, `dev_deployment`, `prod_deployment`, `prod_required`, `ticket`, `search` (list parameters may repeat).

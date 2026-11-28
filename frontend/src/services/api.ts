@@ -341,3 +341,23 @@ export function filtersBodyFromQuery(qs: string): Record<string, unknown> {
   if (p.get('search')) body.search = p.get('search')
   return body
 }
+
+export interface SavedView {
+  id: string
+  owner_id: string
+  name: string
+  path: string
+  query: string
+  shared: boolean
+  url: string
+  mine: boolean
+  owner: { name: string; email: string } | null
+  created_at: string
+  updated_at: string
+}
+export const viewsApi = {
+  list: () => api.get<{ items: SavedView[] }>('/views').then((r) => r.data.items),
+  create: (body: { name: string; path: string; query: string; shared: boolean }) => api.post<SavedView>('/views', body).then((r) => r.data),
+  update: (id: string, body: Partial<{ name: string; shared: boolean; query: string }>) => api.patch<SavedView>(`/views/${id}`, body).then((r) => r.data),
+  remove: (id: string) => api.delete(`/views/${id}`).then((r) => r.data),
+}
