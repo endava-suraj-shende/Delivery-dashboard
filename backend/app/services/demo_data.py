@@ -440,6 +440,9 @@ class DemoWorkspace:
         self.reports = ReportService(s, self.analytics, self.bus, db_factory=self.db, workspace="demo")
         from app.services.narrative_service import NarrativeService
         self.narrative = NarrativeService(self.analytics)
+        from app.services.forecast_service import ForecastService
+        self.forecast = ForecastService(self.analytics)
+        self.reports.narrative, self.reports.forecast = self.narrative, self.forecast
         self.jira_pool = JiraClientPool("demo@example.com", "demo-token", 5, 60)
         self.jira_boards = _DemoRegistry(s.jira_boards_path, self.jira_pool, self.fake, repo=BoardRepo(self.db), owners=owners)
         with self.db() as dbs:

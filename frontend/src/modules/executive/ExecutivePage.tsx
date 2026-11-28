@@ -7,6 +7,7 @@ import { ChartCard, DonutChart, NamedBarChart, StackedBarChart, TrendChart, STAT
 import { GlobalFilterBar, PageHeader, PrintButton } from '@/components/common/PageHeader'
 import { InsightsPanel } from '@/components/common/InsightsPanel'
 import { NarrativeCard } from '@/components/common/NarrativeCard'
+import { ForecastCard } from '@/components/common/ForecastCard'
 import { ErrorState, LoadingState } from '@/components/common/States'
 import { TicketDialog } from '@/components/common/Tables'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -85,7 +86,10 @@ export default function ExecutivePage() {
             </KpiGrid>
           )}
 
-          <NarrativeCard />
+          <div className="grid gap-4 xl:grid-cols-5">
+            <NarrativeCard className="xl:col-span-3" />
+            <ForecastCard className="xl:col-span-2" />
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <ChartCard title="Overall work status" description="Unique tickets by latest status. Click to filter.">

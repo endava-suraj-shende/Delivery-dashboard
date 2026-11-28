@@ -1,6 +1,7 @@
-﻿"""Employee, project, Jira, deployment, dashboard, search and config endpoints."""
+"""Employee, project, Jira, deployment, dashboard, search and config endpoints."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -203,6 +204,14 @@ def jira_status_distribution(f: Filters = Depends(filters), c: Container = Depen
 def dashboard_narrative(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     """Rule-based narrative summary + anomaly flags for the current filter scope (paste-ready for client updates)."""
     return c.narrative.summary(f)
+
+
+@dashboard.get("/forecast")
+def dashboard_forecast(f: Filters = Depends(filters), c: Container = Depends(loaded_container),
+                       target_date: Optional[date] = Query(None, description="default: 14 days ahead"),
+                       remaining: Optional[int] = Query(None, ge=0, description="override the open-ticket count, e.g. a committed scope")) -> Dict[str, Any]:
+    """Monte-Carlo forecast from the last 8 weeks of throughput for the current scope."""
+    return c.forecast.forecast(f, target_date, remaining)
 
 
 @employees.get("/{name}/narrative", response_model=R.NarrativeOut)

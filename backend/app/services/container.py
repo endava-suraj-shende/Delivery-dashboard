@@ -52,6 +52,9 @@ class Container:
         self.reports = ReportService(settings, self.analytics, bus, db_factory=self.db)
         from app.services.narrative_service import NarrativeService
         self.narrative = NarrativeService(self.analytics)
+        from app.services.forecast_service import ForecastService
+        self.forecast = ForecastService(self.analytics)
+        self.reports.narrative, self.reports.forecast = self.narrative, self.forecast
         from app.services.schedule_service import ScheduleService
         self.schedules = ScheduleService(self)
         self.jira_pool = JiraClientPool(settings.jira_email, settings.jira_api_token, settings.jira_timeout_seconds,

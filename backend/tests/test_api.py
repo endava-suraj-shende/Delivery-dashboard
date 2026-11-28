@@ -269,3 +269,17 @@ def test_schedule_digest_lifecycle(client, monkeypatch):
     assert pr.json()["next_run_at"] is None
     assert client.delete(f"/api/v1/reports/schedules/{sid}").json()["ok"] is True
     assert not any(i["id"] == sid for i in client.get("/api/v1/reports/schedules").json()["items"])
+
+
+def test_forecast_endpoint_shapes(client):
+    r = client.get("/api/v1/dashboard/forecast", params={**ALL, "target_date": "2030-01-01"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["history"]["weeks"] == 8 and d["runs"] == 10000 and d["confidence"] in ("good", "fair", "low")
+    # the sample workbooks hold ~12 activities: not enough history -> an explicit note, never a fake number
+    if d["confidence"] == "low":
+        assert d["note"] and d["completion"] is None
+    else:
+        assert d["completion"]["percentiles"][0]["p"] == 50 and d["by_date"]["date"] == "2030-01-01"
+    r2 = client.get("/api/v1/dashboard/forecast", params={**ALL, "remaining": 0})
+    assert r2.json()["remaining"] == 0

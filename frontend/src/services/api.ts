@@ -164,9 +164,23 @@ export interface Narrative {
   generated_at: string
 }
 
+export interface Forecast {
+  scope: string
+  history: { weeks: number; days: number; completed: number; per_week: { week: string; completed: number }[]; avg_per_week: number; avg_per_day: number }
+  remaining: number
+  confidence: 'good' | 'fair' | 'low'
+  runs: number
+  generated_at: string
+  completion: { percentiles: { p: number; days: number; date: string | null }[]; beyond_horizon_share: number } | null
+  by_date: { date: string; days: number; percentiles: { p: number; completed: number }[]; probability_all_done: number | null; expected: number } | null
+  note: string | null
+}
+
 export const dashboardApi = {
   executive: (qs: string) => api.get<ExecutiveData>(`/dashboard/executive${q(qs)}`).then((r) => r.data),
   narrative: (qs: string) => api.get<Narrative>(`/dashboard/narrative${q(qs)}`).then((r) => r.data),
+  forecast: (qs: string, targetDate?: string | null, remaining?: number | null) =>
+    api.get<Forecast>(`/dashboard/forecast${q(qs)}`, { params: { ...(targetDate ? { target_date: targetDate } : {}), ...(remaining != null ? { remaining } : {}) } }).then((r) => r.data),
   team: (qs: string) => api.get<TeamData>(`/dashboard/team${q(qs)}`).then((r) => r.data),
   activities: (qs: string, page = 1, pageSize = 100) =>
     api.get<Paged<Activity>>(`/dashboard/activities${q(qs, { page, page_size: pageSize })}`).then((r) => r.data),

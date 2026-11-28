@@ -31,11 +31,14 @@ from reportlab.platypus import (
 
 from app.core.config import Settings
 from app.core.exceptions import NotFoundError, ValidationFailedError
+from app.core.logging import get_logger
 from app.events.event_bus import EventBus, Events
 from app.processors.status_normalizer import CATEGORY_META
 from app.services.analytics_service import AnalyticsEngine, category_series
 from app.services.filter_service import Filters
 from app.utils.text import slugify
+
+log = get_logger("reports")
 
 COLOR_HEX = {"green": "16A34A", "blue": "2563EB", "orange": "F97316", "amber": "EAB308", "pink": "DB2777", "red": "DC2626",
              "grey": "6B7280", "purple": "7C3AED", "teal": "0D9488", "cyan": "0891B2", "indigo": "4F46E5"}
@@ -106,6 +109,8 @@ class ReportService:
                  workspace: str = "real") -> None:
         self.settings = settings
         self.engine = engine
+        self.narrative = None  # set by the container: NarrativeService
+        self.forecast = None   # set by the container: ForecastService
         self.bus = bus
         self._registry: Dict[str, Dict[str, Any]] = {}  # fallback when no database session factory is supplied
         self._db = db_factory
@@ -210,7 +215,16 @@ class ReportService:
         rels = self.engine.releases_view(f)["items"]
         tickets = self.engine.tickets_view(f)["items"]
         dq = self.engine.data_quality(self.engine.resolve_filters(f))
-        return {"overview": ov, "activities": acts, "releases": rels, "tickets": tickets, "quality": dq,
+        extra: Dict[str, Any] = {}
+        if report_type in ("management", "team", "project", "jira_board"):
+            try:
+                if self.narrative is not None:
+                    extra["narrative"] = self.narrative.summary(f)
+                if self.forecast is not None:
+                    extra["forecast"] = self.forecast.forecast(f)
+            except Exception:  # the report must never fail because of an optional section
+                log.exception("Narrative/forecast section skipped")
+        return {"overview": ov, "activities": acts, "releases": rels, "tickets": tickets, "quality": dq, **extra,
                 "period": ov["period"], "filters": ov["filters"], "generated_at": datetime.now().strftime("%d %b %Y %H:%M")}
 
     # ------------------------------------------------------------------ PDF
@@ -313,6 +327,31 @@ class ReportService:
                   (f"{100 * p['completed'] / p['unique_tickets']:.0f}%" if p["unique_tickets"] else "-")]
                  for p in sorted(ov["projects"], key=lambda x: -x["unique_tickets"])],
                 widths=[46, 14, 14, 16, 16, 14, 14, 14, 16, 16, 16, 16], highlight={6: "red", 3: "green"}))
+
+        if data.get("narrative"):
+            n = data["narrative"]
+            story.append(Spacer(1, 8))
+            story.append(self._section("Delivery narrative", f"Written from the figures above - {n['scope']}, {n['period']['label']}."))
+            for para in n["paragraphs"]:
+                st = self._styles()
+                story.append(Paragraph(para["text"], st["cell_b"] if para["kind"] == "headline" else st["body"]))
+                story.append(Spacer(1, 2))
+            flags = [fl for fl in n["flags"] if fl["severity"] in ("danger", "warning")]
+            if flags:
+                story.append(Paragraph("Watch: " + " ".join(fl["text"] for fl in flags[:5]), self._styles()["small"]))
+        if data.get("forecast") and data["forecast"].get("completion"):
+            fc = data["forecast"]
+            pcs = {x["p"]: x for x in fc["completion"]["percentiles"]}
+            bd = fc.get("by_date") or {}
+            bd_p = {x["p"]: x["completed"] for x in bd.get("percentiles", [])}
+            story.append(Spacer(1, 6))
+            story.append(self._section("Delivery forecast", f"Monte-Carlo ({fc['runs']:,} runs) over the last {fc['history']['weeks']} weeks of throughput "
+                                                            f"({fc['history']['completed']} completed, {fc['history']['avg_per_week']}/week) - {fc['confidence']} confidence."))
+            rows = [[f"{fc['remaining']} open tickets done by", pcs[50]["date"] or ">1 year", pcs[70]["date"] or ">1 year", pcs[85]["date"] or ">1 year", pcs[95]["date"] or ">1 year"]]
+            if bd:
+                rows.append([f"Completed by {bd['date']} (at least)", bd_p.get(50, "-"), bd_p.get(70, "-"), bd_p.get(85, "-"), bd_p.get(95, "-")])
+            story.append(self._grid(["", "50% confidence", "70%", "85%", "95%"], rows, widths=[70, 36, 36, 36, 36]))
+            story.append(Paragraph("Forecasts assume the team and scope stay as they are; they are a conversation aid, not a commitment.", self._styles()["small"]))
 
         if report_type in ("management", "team") and ov["insights"]:
             story.append(Spacer(1, 8))

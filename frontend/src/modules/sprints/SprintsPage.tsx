@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/common/States
 import { DataTable } from '@/components/common/DataTable'
 import { ReleasesTable, TicketDialog, TicketsTable } from '@/components/common/Tables'
 import { InsightsPanel } from '@/components/common/InsightsPanel'
+import { ForecastCard } from '@/components/common/ForecastCard'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -178,6 +179,7 @@ export default function SprintsPage() {
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4">
+                  {d.sprint.state !== 'closed' && <ForecastCard targetDate={d.sprint.end_date ?? undefined} targetLabel={d.sprint.end_date ? `sprint end (${fmtDate(d.sprint.end_date)})` : undefined} remaining={d.kpis.remaining_tickets} scopeLabel={`tickets in ${d.sprint.name}`} />}
                   <div className="grid gap-4 lg:grid-cols-3">
                     <ChartCard title="Sprint ticket status" description="Unique tickets by latest status in the sprint.">
                       <DonutChart data={d.charts.ticket_status} onSelect={(k) => toggleValue('status', k)} selected={filters.status} centerLabel="tickets" />
