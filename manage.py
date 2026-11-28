@@ -69,14 +69,13 @@ def cmd_create_superuser(args: argparse.Namespace) -> int:
 
 def cmd_create_demo_superuser(args: argparse.Namespace) -> int:
     """A superuser that only ever sees synthetic demo data (safe to hand to stakeholders)."""
+    from app.db.models import ROLE_ADMIN
     from app.services.container import get_container
     email = args.email or "demo.admin@example.com"
     password = args.password or "Demo-Admin-2026!"
     c = get_container()
     with c.db() as db:
-        user = c.auth.create_superuser(db, email, args.name or "Demo Superuser", password)
-        user.demo_only = True
-        user.demo_mode = True
+        user = c.auth.upsert_demo_account(db, email, args.name or "Demo Superuser", password, ROLE_ADMIN, True)
         db.commit()
         print(f"Demo superuser ready: {user.email} / {password} (demo data only)")
     return 0
@@ -84,24 +83,13 @@ def cmd_create_demo_superuser(args: argparse.Namespace) -> int:
 
 def cmd_create_demo_dm(args: argparse.Namespace) -> int:
     """A delivery manager locked to synthetic demo data (sees the demo Phoenix boards)."""
-    from app.db.models import ROLE_DM, STATUS_ACTIVE, User, utcnow
-    from app.core.security import hash_password
-    from sqlalchemy import select
+    from app.db.models import ROLE_DM
     from app.services.container import get_container
     email = args.email or "demo.manager@example.com"
     password = args.password or "Demo-Manager-2026!"
     c = get_container()
     with c.db() as db:
-        u = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-        if u is None:
-            u = User(email=email, name=args.name or "Demo Delivery Manager")
-            db.add(u)
-        u.password_hash = hash_password(password)
-        u.role = u.requested_role = ROLE_DM
-        u.status = STATUS_ACTIVE
-        u.email_verified_at = u.approved_at = utcnow()
-        u.demo_only = u.demo_mode = True
-        u.must_change_password = False
+        u = c.auth.upsert_demo_account(db, email, args.name or "Demo Delivery Manager", password, ROLE_DM, False)
         db.commit()
         print(f"Demo delivery manager ready: {u.email} / {password} (demo data only)")
     return 0
