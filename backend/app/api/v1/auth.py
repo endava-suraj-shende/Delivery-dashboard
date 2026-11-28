@@ -13,6 +13,7 @@ from app.api.deps import container
 from app.db.base import get_db
 from app.db.models import ROLE_LABELS, User
 from app.services.container import Container
+from app.schemas import responses as R
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -60,7 +61,7 @@ def _clear_cookie(resp: Response, c: Container) -> None:
     resp.delete_cookie(c.settings.cookie_name, path="/")
 
 
-@router.get("/options")
+@router.get("/options", response_model=R.AuthOptions)
 def options(c: Container = Depends(container), db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Public: roles that can be requested and whether e-mail delivery is configured."""
     pol = c.auth.access_policy(db)
@@ -93,7 +94,7 @@ def verify_email(body: TokenOnly, c: Container = Depends(container), db: Session
     return out
 
 
-@router.post("/login")
+@router.post("/login", response_model=R.SessionOut)
 def login(body: Login, response: Response, c: Container = Depends(container), db: Session = Depends(get_db)) -> Dict[str, Any]:
     out = c.auth.login(db, body.email, body.password)
     db.commit()
@@ -162,7 +163,7 @@ def _with_boards(c: Container, user: User) -> Dict[str, Any]:
     return d
 
 
-@router.get("/me")
+@router.get("/me", response_model=R.SessionOut)
 def me(user: Optional[User] = Depends(optional_user), c: Container = Depends(container)) -> Dict[str, Any]:
     return {"user": _with_boards(c, user) if user else None}
 

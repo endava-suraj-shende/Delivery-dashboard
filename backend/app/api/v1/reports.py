@@ -16,6 +16,7 @@ from app.schemas.common import ReportRequest
 from app.services.container import Container
 from app.services.filter_service import Filters
 from app.services.report_service import REPORT_TYPES
+from app.schemas import responses as R
 
 router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(managers)])
 
@@ -58,7 +59,7 @@ async def management_report(body: ReportRequest, c: Container = Depends(loaded_c
     return c.reports.generate("management", body.format, _filters(body, c, user), None, created_by=user.id)
 
 
-@router.get("")
+@router.get("", response_model=R.ReportListOut)
 async def list_reports(c: Container = Depends(loaded_container), user: User = Depends(managers)) -> Dict[str, Any]:
     # delivery managers see their own history; admins see everyone's
     return {"items": c.reports.list(created_by=None if user.role == "admin" else user.id)}
@@ -102,21 +103,21 @@ class SchedulePatch(BaseModel):
     filters: Optional[Dict[str, Any]] = None
 
 
-@router.get("/schedules")
+@router.get("/schedules", response_model=R.ScheduleListOut)
 async def list_schedules(c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
     from app.services.schedule_service import CADENCES, FORMATS, PRESETS
     return {"items": c.schedules.list(db, user), "cadences": list(CADENCES), "presets": list(PRESETS), "formats": list(FORMATS),
             "email_enabled": c.email.enabled}
 
 
-@router.post("/schedules")
+@router.post("/schedules", response_model=R.ScheduleOut)
 async def create_schedule(body: ScheduleBody, c: Container = Depends(container), user: User = Depends(managers), db: Session = Depends(get_db)) -> Dict[str, Any]:
     out = c.schedules.create(db, user, body.model_dump())
     db.commit()
     return out
 
 
-@router.patch("/schedules/{schedule_id}")
+@router.patch("/schedules/{schedule_id}", response_model=R.ScheduleOut)
 async def update_schedule(schedule_id: str, body: SchedulePatch, c: Container = Depends(container), user: User = Depends(managers),
                           db: Session = Depends(get_db)) -> Dict[str, Any]:
     out = c.schedules.update(db, user, schedule_id, body.model_dump(exclude_none=True))

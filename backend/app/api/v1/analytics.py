@@ -13,6 +13,7 @@ from app.events.event_bus import Events
 from app.schemas.common import StatusConfigUpdate, StatusMappingAdd
 from app.services.container import Container
 from app.services.filter_service import Filters
+from app.schemas import responses as R
 from app.services.performance_service import BANDS, PERFORMANCE_RULES, metric_rows, team_summary
 
 employees = APIRouter(prefix="/employees", tags=["Employees"])
@@ -38,7 +39,7 @@ def _resolve_name(values: list, name: str, kind: str) -> str:
 
 
 # ---------------------------------------------------------------- employees
-@employees.get("")
+@employees.get("", response_model=R.EmployeesOut)
 def list_employees(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     all_names = c.analytics.roster(f)
@@ -136,7 +137,7 @@ def _sprint_catalogue(c: Container) -> list:
     return list(c.jira_source.stats.sprints or [])
 
 
-@sprints.get("")
+@sprints.get("", response_model=R.SprintsOut)
 def list_sprints(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     items = c.analytics.sprint_table(f, _sprint_catalogue(c))
     active = next((s["name"] for s in items if s.get("state") == "active"), None)
@@ -198,18 +199,18 @@ def jira_status_distribution(f: Filters = Depends(filters), c: Container = Depen
             "by_board": ch["status_by_board"], "trend": ch["trend"]}
 
 
-@dashboard.get("/narrative")
+@dashboard.get("/narrative", response_model=R.NarrativeOut)
 def dashboard_narrative(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     """Rule-based narrative summary + anomaly flags for the current filter scope (paste-ready for client updates)."""
     return c.narrative.summary(f)
 
 
-@employees.get("/{name}/narrative")
+@employees.get("/{name}/narrative", response_model=R.NarrativeOut)
 def employee_narrative(name: str, f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     return c.narrative.summary(_with(f, employee=[name]), employee=name)
 
 
-@jira.get("/tickets")
+@jira.get("/tickets", response_model=R.TicketsOut)
 def jira_tickets(f: Filters = Depends(filters), c: Container = Depends(loaded_container),
                  page: int = Query(0, ge=0, description="0 = all"), page_size: int = Query(0, ge=0, le=1000),
                  compact: bool = Query(True)) -> Dict[str, Any]:
@@ -255,7 +256,7 @@ def deployment_trends(f: Filters = Depends(filters), c: Container = Depends(load
 
 
 # ---------------------------------------------------------------- dashboard
-@dashboard.get("/executive")
+@dashboard.get("/executive", response_model=R.Overview)
 def executive(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     jira_summary = None
@@ -276,7 +277,7 @@ def executive(f: Filters = Depends(filters), c: Container = Depends(loaded_conta
     return {**ov, "data_quality": c.analytics.data_quality(c.analytics.resolve_filters(f))["summary"], "jira": jira_summary}
 
 
-@dashboard.get("/team")
+@dashboard.get("/team", response_model=R.Overview)
 def team(f: Filters = Depends(filters), c: Container = Depends(loaded_container)) -> Dict[str, Any]:
     ov = c.analytics.overview(f)
     return {**ov, "tickets": c.analytics.tickets_view(f, compact=True)["items"], "releases": c.analytics.releases_view(f)["items"]}

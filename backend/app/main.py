@@ -13,6 +13,7 @@ from app.api.auth_deps import admin_only, excel_access, viewers
 from app.api.v1 import admin, analytics, auth, excel, jira_live, reports
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
+from app.schemas.responses import HealthOut
 from app.core.hardening import CsrfOriginMiddleware, RateLimitMiddleware, SecurityHeadersMiddleware
 from app.core.logging import get_logger, setup_logging
 from app.services.container import get_container
@@ -143,7 +144,7 @@ async def root() -> Dict[str, Any]:
     return {"app": settings.app_name, "version": settings.app_version, "docs": "/docs", "api": API}
 
 
-@app.get("/health", tags=["Health"])
+@app.get("/health", tags=["Health"], response_model=HealthOut)
 async def health() -> Dict[str, Any]:
     """Liveness + readiness: process up, database reachable, data loaded."""
     from sqlalchemy import text
