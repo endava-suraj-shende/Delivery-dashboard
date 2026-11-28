@@ -4,24 +4,24 @@ import { useNavigate } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Brain, Check, Copy, ExternalLink, Gauge, ListChecks,
-  MessageSquareText, RefreshCw, Send, ShieldCheck, Sparkles, TrendingUp,
+  MessageSquareText, RefreshCw, ShieldCheck, Sparkles, TrendingUp,
 } from 'lucide-react'
 import { GlobalFilterBar, PageHeader } from '@/components/common/PageHeader'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { EmptyState, ErrorState, LoadingState } from '@/components/common/States'
 import { DataTable } from '@/components/common/DataTable'
 import { CategoryCell, EmployeeLink, TicketLink } from '@/components/common/Tables'
-import { CategoryBarChart, ChartCard, StackedBarChart, type StackSeries } from '@/components/charts'
+import { CategoryBarChart, ChartCard, StackedBarChart, TrendChart, type LineSeries, type StackSeries } from '@/components/charts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { assistant } from '@/components/common/AiAssistant'
 import { useFilters } from '@/hooks/useFilters'
 import { can, useSession } from '@/hooks/useSession'
 import {
-  intelligenceApi, type AnomaliesResponse, type AnomalyItem, type AskResponse, type IntelligenceStatus, type Recommendation, type RecommendationsResponse,
+  intelligenceApi, type AnomaliesResponse, type AnomalyItem, type IntelligenceStatus, type Recommendation, type RecommendationsResponse,
   type RiskBand, type RiskFactor, type RiskItem, type RiskResponse,
 } from '@/services/api'
 import type { CategoryPoint, GroupedRow } from '@/types'
@@ -32,10 +32,10 @@ import { cn, fmtDate } from '@/lib/utils'
 //   Risk score        = open tickets ranked by predicted probability of slipping
 //   Recommended actions = reviewable next steps derived from risk and load
 //   Early warnings    = weekly series that moved unusually versus their own history
-//   Ask the data      = natural-language question -> engine-computed answer
+//   AI Assistant      = natural-language question -> engine-computed answer (global side panel, see components/common/AiAssistant)
 //   Model & trust     = how the model was trained, how good it is, what drives it
 
-type TabKey = 'risk' | 'actions' | 'warnings' | 'ask' | 'model'
+type TabKey = 'risk' | 'actions' | 'warnings' | 'model'
 
 const BAND_LABEL: Record<RiskBand, string> = { high: 'High risk', medium: 'Medium risk', low: 'Low risk' }
 const BAND_CLS: Record<RiskBand, string> = {
@@ -44,11 +44,6 @@ const BAND_CLS: Record<RiskBand, string> = {
   low: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200',
 }
 const BAND_BAR: Record<RiskBand, string> = { high: 'bg-red-500', medium: 'bg-amber-500', low: 'bg-emerald-500' }
-const SEV_CLS: Record<AnomalyItem['severity'], string> = {
-  danger: BAND_CLS.high,
-  warning: BAND_CLS.medium,
-  info: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200',
-}
 const ACTION_KIND: Record<string, { label: string; hint: string }> = {
   focus: { label: 'Focus', hint: 'Highest predicted risk - review first' },
   unblock: { label: 'Unblock', hint: 'Blocked long enough to need escalation' },
@@ -56,14 +51,6 @@ const ACTION_KIND: Record<string, { label: string; hint: string }> = {
   due: { label: 'Due soon', hint: 'At risk and due within days' },
   hygiene: { label: 'Hygiene', hint: 'Data gaps that hide work from plans' },
 }
-const SUGGESTED_QUESTIONS = [
-  'Which tickets are most at risk this sprint?',
-  'Who has the most blocked tickets?',
-  'How many tickets were completed last week?',
-  'What is overdue right now?',
-  'When will the remaining work be done?',
-  'What should I do first today?',
-]
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -122,11 +109,16 @@ export default function IntelligencePage() {
         title="AI Insights"
         description="Predicted delivery risk, recommended actions and early warnings for the current filter scope. Trained on this installation's own history; every score is explained and every figure can be checked on Tickets or People."
         breadcrumbs={[{ label: 'AI Insights' }]}
-        actions={can(user, 'admin', 'dm') ? (
-          <Button size="sm" variant="outline" onClick={() => retrain.mutate()} disabled={retrain.isPending} aria-label="Retrain the risk model">
-            <RefreshCw className={cn('h-4 w-4', retrain.isPending && 'animate-spin')} /> {retrain.isPending ? 'Training...' : 'Retrain model'}
-          </Button>
-        ) : undefined}
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={assistant.open} aria-label="Open AI Assistant"><MessageSquareText className="h-4 w-4" /> Ask the AI Assistant</Button>
+            {can(user, 'admin', 'dm') && (
+              <Button size="sm" variant="outline" onClick={() => retrain.mutate()} disabled={retrain.isPending} aria-label="Retrain the risk model">
+                <RefreshCw className={cn('h-4 w-4', retrain.isPending && 'animate-spin')} /> {retrain.isPending ? 'Training...' : 'Retrain model'}
+              </Button>
+            )}
+          </div>
+        )}
       />
       <GlobalFilterBar compact />
 
@@ -156,7 +148,6 @@ export default function IntelligencePage() {
           <TabsTrigger value="risk" className="gap-1.5"><Gauge className="h-3.5 w-3.5" aria-hidden /> Risk score</TabsTrigger>
           <TabsTrigger value="actions" className="gap-1.5"><ListChecks className="h-3.5 w-3.5" aria-hidden /> Recommended actions{actions.data ? ` (${actions.data.items.length})` : ''}</TabsTrigger>
           <TabsTrigger value="warnings" className="gap-1.5"><Activity className="h-3.5 w-3.5" aria-hidden /> Early warnings{warnings.data ? ` (${warnings.data.items.length})` : ''}</TabsTrigger>
-          <TabsTrigger value="ask" className="gap-1.5"><MessageSquareText className="h-3.5 w-3.5" aria-hidden /> Ask the data</TabsTrigger>
           <TabsTrigger value="model" className="gap-1.5"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Model &amp; trust</TabsTrigger>
         </TabsList>
 
@@ -169,9 +160,6 @@ export default function IntelligencePage() {
         <TabsContent value="warnings">
           <EarlyWarnings queryString={queryString} />
         </TabsContent>
-        <TabsContent value="ask">
-          <AskTheData queryString={queryString} llmEnabled={!!status.data?.llm.enabled} />
-        </TabsContent>
         <TabsContent value="model">
           {status.isLoading ? <LoadingState rows={2} /> : status.data ? <ModelAndTrust status={status.data} /> : null}
         </TabsContent>
@@ -181,70 +169,90 @@ export default function IntelligencePage() {
 }
 
 // ---------------------------------------------------------------------------------------------- daily briefing
+type BriefTone = 'blue' | 'red' | 'amber' | 'purple' | 'sky'
+type BriefItem = { kind: string; label: string; icon: typeof Sparkles; tone: BriefTone; text: string; metric?: string; tab: TabKey }
+const BRIEF_TONE: Record<BriefTone, string> = {
+  blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  red: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  purple: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
+  sky: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+}
+
 /**
- * The page's signature feature: one paragraph that fuses the three analyses (risk, actions, warnings) into what a
- * delivery manager would say at stand-up. Composed from engine figures only, so it is always consistent with the tabs.
+ * The page's signature feature: the three analyses (risk, actions, warnings) fused into what a delivery manager
+ * would say at stand-up. Composed from engine figures only, so it is always consistent with the tabs below.
  */
 function DailyBriefing({ risk, actions, warnings, loading, onGo }: {
   risk?: RiskResponse; actions?: RecommendationsResponse; warnings?: AnomaliesResponse; loading: boolean; onGo: (t: TabKey) => void
 }) {
   const [copied, setCopied] = useState(false)
-  const lines = useMemo(() => {
+  const items = useMemo<BriefItem[]>(() => {
     if (!risk) return []
     const s = risk.summary
-    const out: { text: string; tab: TabKey }[] = []
-    if (!s.open) return [{ text: 'No open tickets in this scope - nothing to score.', tab: 'risk' as TabKey }]
-    out.push({
-      tab: 'risk',
-      text: `${plural(s.open, 'open ticket')} in scope; ${s.high} high risk and ${s.medium} medium. Roughly ${Math.round(s.expected_slips ?? 0)} are expected to slip at the current pace.`,
-    })
+    if (!s.open) return [{ kind: 'scope', label: 'Scope', icon: ListChecks, tone: 'blue', text: 'No open tickets in this scope - nothing to score.', tab: 'risk' }]
+    const out: BriefItem[] = [{
+      kind: 'scope', label: 'Where we stand', icon: Gauge, tone: 'blue', tab: 'risk', metric: `${s.high} high`,
+      text: `${plural(s.open, 'open ticket')} in scope: ${s.high} high risk, ${s.medium} medium. About ${Math.round(s.expected_slips ?? 0)} are expected to slip at the current pace.`,
+    }]
     const top = risk.items[0]
     if (top) {
       const why = top.factors.map(describeFactor).filter(Boolean).slice(0, 2).join(', ')
-      out.push({ tab: 'risk', text: `Most urgent: ${top.ticket_id}${top.employee ? ` (${top.employee})` : ''} at ${pct(top.risk)}${why ? ` - ${why}` : ''}.` })
+      out.push({ kind: 'urgent', label: 'Most urgent', icon: AlertTriangle, tone: 'red', tab: 'risk', metric: top.ticket_id, text: `${top.ticket_id}${top.employee ? ` (${top.employee})` : ''} at ${pct(top.risk)}${why ? ` - ${why}` : ''}.` })
     }
     const owner = risk.by_employee?.[0]
     if (owner && owner.high >= 3 && s.high && owner.high / s.high >= 0.2) {
-      out.push({ tab: 'risk', text: `${owner.employee} holds ${owner.high} of the ${s.high} high-risk tickets (${pct(owner.high / s.high)}).` })
+      out.push({ kind: 'owner', label: 'Concentration', icon: TrendingUp, tone: 'amber', tab: 'risk', metric: pct(owner.high / s.high), text: `${owner.employee} holds ${owner.high} of the ${s.high} high-risk tickets.` })
     }
     const act = actions?.items[0]
-    if (act) out.push({ tab: 'actions', text: `First action: ${act.title.replace(/^./, (c) => c.toLowerCase())}.` })
+    if (act) out.push({ kind: 'action', label: 'First action', icon: ListChecks, tone: 'purple', tab: 'actions', metric: URGENCY[act.priority]?.label, text: `${act.title}.` })
     const warn = warnings?.items[0]
-    if (warn) out.push({ tab: 'warnings', text: `Early warning: ${warn.text.replace(/\s*\(.*?\)\.?$/, '.')}` })
+    if (warn) out.push({ kind: 'warning', label: 'Early warning', icon: Activity, tone: 'sky', tab: 'warnings', metric: `${warn.direction === 'up' ? '+' : ''}${Math.round(((warn.value - warn.baseline_median) / Math.max(1, warn.baseline_median)) * 100)}%`, text: `${warn.scope}: ${warn.metric_label} ${warn.direction === 'up' ? 'jumped to' : 'dropped to'} ${warn.value} against a usual ${Math.round(warn.baseline_median)}.` })
     return out
   }, [risk, actions, warnings])
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(lines.map((l) => l.text).join(' '))
+      await navigator.clipboard.writeText(items.map((l) => `${l.label}: ${l.text}`).join('\n'))
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* clipboard unavailable */ }
   }
 
   return (
-    <Card className="border-primary/25 bg-gradient-to-br from-primary/[0.04] to-transparent animate-in fade-in-0 slide-in-from-bottom-2 duration-500" data-testid="daily-briefing">
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">
+    <Card className="overflow-hidden border-primary/25 animate-in fade-in-0 slide-in-from-bottom-2 duration-500" data-testid="daily-briefing">
+      <div className="h-1 bg-gradient-to-r from-primary via-purple-500 to-sky-500" aria-hidden />
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-3">
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-primary" aria-hidden /> Daily briefing</CardTitle>
-          <CardDescription>What a delivery manager should know this morning - risk, first action and anything unusual, in one place.</CardDescription>
+          <CardDescription>Stand-up ready: where we stand, what is most urgent, the first thing to do and anything unusual - {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}.</CardDescription>
         </div>
-        <Button size="sm" variant="outline" onClick={copy} disabled={!lines.length} aria-label="Copy briefing">
+        <Button size="sm" variant="outline" onClick={copy} disabled={!items.length} aria-label="Copy briefing">
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy'}
         </Button>
       </CardHeader>
-      <CardContent className="text-sm leading-relaxed">
-        {loading && !lines.length ? <p className="text-muted-foreground">Preparing the briefing...</p> : (
-          <ul className="space-y-1">
-            {lines.map((l, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" aria-hidden />
-                <button type="button" onClick={() => onGo(l.tab)} className="rounded-sm text-left hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary" title="Open the related tab">
-                  {l.text}
-                </button>
-              </li>
-            ))}
-          </ul>
+      <CardContent className="pt-0">
+        {loading && !items.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse rounded-lg bg-muted/60" />)}</div>
+        ) : (
+          <ol className={cn('grid gap-3 sm:grid-cols-2', items.length >= 5 ? 'xl:grid-cols-5' : items.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3')}>
+            {items.map((it, i) => {
+              const Icon = it.icon
+              return (
+                <li key={it.kind} className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400" style={{ animationDelay: `${120 + i * 90}ms` }}>
+                  <button type="button" onClick={() => onGo(it.tab)} className="group flex h-full w-full flex-col rounded-lg border bg-card p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary" title="Open the related tab">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md', BRIEF_TONE[it.tone])}><Icon className="h-4 w-4" aria-hidden /></span>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{it.label}</span>
+                      {it.metric && <span className="ml-auto rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums">{it.metric}</span>}
+                    </div>
+                    <p className="mt-2 text-sm leading-snug">{it.text}</p>
+                    <span className="mt-auto pt-2 text-[11px] text-primary opacity-0 transition-opacity group-hover:opacity-100">Open &rarr;</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
         )}
       </CardContent>
     </Card>
@@ -510,136 +518,122 @@ function RecommendedActions({ items }: { items: Recommendation[] }) {
 }
 
 // ------------------------------------------------------------------------------------------------ early warnings
+const FLOW_SERIES: LineSeries[] = [
+  { key: 'started', label: 'Started', color: 'blue' },
+  { key: 'completed', label: 'Completed', color: 'green' },
+  { key: 'blocked', label: 'Blocked', color: 'red' },
+]
+const ACTIVITY_SERIES: LineSeries[] = [{ key: 'activity', label: 'Status updates', color: 'purple' }]
+const SEV_ICON: Record<AnomalyItem['severity'], { cls: string; ring: string }> = {
+  danger: { cls: 'bg-red-500/10 text-red-600 dark:text-red-400', ring: 'border-l-red-500' },
+  warning: { cls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', ring: 'border-l-amber-500' },
+  info: { cls: 'bg-sky-500/10 text-sky-600 dark:text-sky-400', ring: 'border-l-sky-500' },
+}
+
 function EarlyWarnings({ queryString }: { queryString: string }) {
   const [groupBy, setGroupBy] = useState<'employee' | 'jira_board'>('employee')
   const q = useQuery({ queryKey: ['intel', 'warnings', queryString, groupBy], queryFn: () => intelligenceApi.anomalies(queryString, groupBy), placeholderData: (p) => p })
   const nav = useNavigate()
   const qs = queryString ? `?${queryString}` : ''
+
+  const weekly = useMemo(() => {
+    if (!q.data) return []
+    const byWeek = new Map<string, Record<string, number | string>>()
+    for (const [metric, pts] of Object.entries(q.data.series)) {
+      for (const p of pts) {
+        const row = byWeek.get(p.week) ?? { date: p.week }
+        row[metric] = p.value
+        byWeek.set(p.week, row)
+      }
+    }
+    return [...byWeek.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))) as ({ date: string } & Record<string, number | string>)[]
+  }, [q.data])
+
   if (q.isLoading && !q.data) return <LoadingState rows={3} />
   if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!q.data) return null
+  const latest = weekly[weekly.length - 1]
+  const prev = weekly[weekly.length - 2]
+  const delta = (k: string) => (latest && prev ? Number(latest[k] ?? 0) - Number(prev[k] ?? 0) : null)
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Each weekly series is compared with its own last {q.data.weeks} weeks. A move is flagged when it is more than {q.data.threshold} robust standard deviations from normal - so a busy team is not penalised for being busy.
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Each weekly series is compared with its own last {q.data.weeks} weeks. A move is flagged when it is more than {q.data.threshold} robust standard deviations from normal - so a busy team is not penalised for being busy, and a quiet person is not penalised for being consistent.
         </p>
         <div className="flex gap-1" role="group" aria-label="Group warnings by">
           <Button size="sm" variant={groupBy === 'employee' ? 'default' : 'outline'} onClick={() => setGroupBy('employee')} aria-pressed={groupBy === 'employee'}>People</Button>
           <Button size="sm" variant={groupBy === 'jira_board' ? 'default' : 'outline'} onClick={() => setGroupBy('jira_board')} aria-pressed={groupBy === 'jira_board'}>Boards</Button>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Object.entries(q.data.series).map(([metric, pts]) => <Sparkline key={metric} label={metric} points={pts} />)}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[...FLOW_SERIES, ...ACTIVITY_SERIES].map((s, i) => (
+          <div key={s.key} className="animate-in fade-in-0 slide-in-from-bottom-1 fill-mode-backwards duration-300" style={{ animationDelay: `${i * 60}ms` }}>
+            <KpiCard label={`${s.label} this week`} value={latest ? Number(latest[s.key] ?? 0) : '-'} compact
+              previous={s.key === 'blocked' ? null : prev ? Number(prev[s.key] ?? 0) : null}
+              sub={s.key === 'blocked' && delta('blocked') !== null ? `${(delta('blocked') ?? 0) > 0 ? '+' : ''}${delta('blocked')} vs previous week${(delta('blocked') ?? 0) > 0 ? ' (worse)' : (delta('blocked') ?? 0) < 0 ? ' (better)' : ''}` : undefined}
+              tone={s.color === 'blue' ? 'blue' : s.color === 'green' ? 'green' : s.color === 'red' ? 'red' : 'purple'} hint={`Compared with the previous week (${Number(prev?.[s.key] ?? 0)})`} />
+          </div>
+        ))}
       </div>
-      {q.data.items.length ? (
-        <ul className="space-y-2" data-testid="anomaly-list">
-          {q.data.items.map((a, i) => (
-            <li key={i}>
-              <button type="button" className={cn('flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm', SEV_CLS[a.severity], a.group_by === 'employee' && 'hover:brightness-95')}
-                onClick={() => a.group_by === 'employee' && nav(`/employees/${encodeURIComponent(a.scope)}${qs}`)} disabled={a.group_by !== 'employee'}>
-                {a.direction === 'up' ? <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0" aria-label="up" /> : <ArrowDownRight className="mt-0.5 h-4 w-4 shrink-0" aria-label="down" />}
-                <span className="flex-1"><span className="font-medium">{a.scope}</span> - {a.metric_label} {a.direction === 'up' ? 'jumped to' : 'dropped to'} <span className="font-semibold tabular-nums">{a.value}</span> against a usual <span className="tabular-nums">{Math.round(a.baseline_median)}</span></span>
-                <span className="shrink-0 text-xs opacity-70">week of {a.week}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} />
-      )}
-    </div>
-  )
-}
 
-function Sparkline({ label, points }: { label: string; points: { week: string; value: number }[] }) {
-  const w = 220
-  const h = 48
-  const vals = points.map((p) => p.value)
-  const max = Math.max(1, ...vals)
-  const step = vals.length > 1 ? w / (vals.length - 1) : w
-  const y = (v: number) => (h - (v / max) * (h - 4) - 2).toFixed(1)
-  const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${y(v)}`).join(' ')
-  const last = vals[vals.length - 1] ?? 0
-  const prev = vals[vals.length - 2]
-  const delta = prev !== undefined ? last - prev : null
-  return (
-    <Card>
-      <CardContent className="p-3">
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs capitalize text-muted-foreground">{label.replace(/_/g, ' ')} / week</span>
-          <span className="text-sm font-semibold tabular-nums">
-            {last}
-            {delta !== null && delta !== 0 && <span className={cn('ml-1 text-xs font-normal', delta > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{delta > 0 ? '+' : ''}{delta}</span>}
-          </span>
-        </div>
-        <svg viewBox={`0 0 ${w} ${h}`} className="mt-1 h-12 w-full" role="img" aria-label={`${label} weekly trend, latest ${last}`}>
-          <path d={d} fill="none" stroke="currentColor" strokeWidth={1.5} className="text-primary" />
-          {vals.length > 0 && <circle cx={((vals.length - 1) * step).toFixed(1)} cy={y(last)} r={2.5} className="fill-primary" />}
-        </svg>
-      </CardContent>
-    </Card>
-  )
-}
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        <ChartCard title="Team flow by week" description="Tickets started, completed and blocked per week for this scope.">
+          <TrendChart data={weekly} series={FLOW_SERIES} area />
+        </ChartCard>
+        <ChartCard title="Status updates by week" description="Reporting volume - a sudden drop usually means work is not being logged.">
+          <TrendChart data={weekly} series={ACTIVITY_SERIES} area />
+        </ChartCard>
+      </div>
 
-// -------------------------------------------------------------------------------------------------- ask the data
-function AskTheData({ queryString, llmEnabled }: { queryString: string; llmEnabled: boolean }) {
-  const [question, setQuestion] = useState('')
-  const [history, setHistory] = useState<AskResponse[]>([])
-  const nav = useNavigate()
-  const ask = useMutation({
-    mutationFn: (qn: string) => intelligenceApi.ask(queryString, qn),
-    onSuccess: (r) => setHistory((h) => [r, ...h].slice(0, 10)),
-  })
-  const submit = (qn: string) => {
-    const t = qn.trim()
-    if (!t || ask.isPending) return
-    setQuestion('')
-    ask.mutate(t)
-  }
-  return (
-    <div className="space-y-4" data-testid="ask-box">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><MessageSquareText className="h-4 w-4 text-primary" aria-hidden /> Ask the data</CardTitle>
-          <CardDescription>
-            Your question becomes a filter, and the analytics engine computes the answer - so it always matches the dashboards.
-            {llmEnabled ? ' A language model helps interpret wording; ticket text is never sent.' : ' Understands people, boards, sprints, statuses and periods in plain English.'}
-          </CardDescription>
+          <CardTitle className="text-base">Unusual movements{q.data.items.length ? ` (${q.data.items.length})` : ''}</CardTitle>
+          <CardDescription>Ordered by how far each move is from that series' own normal. Click a person to open their page.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); submit(question) }}>
-            <Input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="e.g. which tickets are at risk for Team Atlas?" aria-label="Your question" maxLength={500} autoComplete="off" />
-            <Button type="submit" disabled={!question.trim() || ask.isPending} aria-label="Ask"><Send className="h-4 w-4" /></Button>
-          </form>
-          <div className="flex flex-wrap gap-1.5" aria-label="Suggested questions">
-            {SUGGESTED_QUESTIONS.map((s) => (
-              <button key={s} type="button" className="rounded-full border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50" onClick={() => submit(s)} disabled={ask.isPending}>{s}</button>
-            ))}
-          </div>
-          {ask.isPending && <p className="text-sm text-muted-foreground" role="status">Working it out...</p>}
-          {ask.isError && <ErrorState error={ask.error} />}
+        <CardContent>
+          {q.data.items.length ? (
+            <ul className="grid gap-3 md:grid-cols-2" data-testid="anomaly-list">
+              {q.data.items.map((a, i) => <WarningCard key={`${a.scope}-${a.metric}-${a.week}`} a={a} index={i} onOpen={a.group_by === 'employee' ? () => nav(`/employees/${encodeURIComponent(a.scope)}${qs}`) : undefined} />)}
+            </ul>
+          ) : (
+            <EmptyState title="No unusual movements" description="All weekly series are within their normal range for this scope." icon={<Activity className="h-6 w-6" />} />
+          )}
         </CardContent>
       </Card>
-      {history.map((r, i) => (
-        <Card key={`${r.question}-${i}`} className={cn(i === 0 && 'border-primary/30')}>
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p className="font-medium text-muted-foreground">You asked: <span className="text-foreground">{r.question}</span></p>
-            <p className="leading-relaxed">{r.answer}</p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" aria-hidden /> understood as: {r.spec.intent.replace(/_/g, ' ')}</span>
-              {r.filters.label ? <span>{String(r.filters.label)}</span> : null}
-              {r.spec.status.length > 0 && <span>status {r.spec.status.join(', ')}</span>}
-              {r.spec.employee.length > 0 && <span>{r.spec.employee.join(', ')}</span>}
-              {r.spec.jira_board.length > 0 && <span>{r.spec.jira_board.join(', ')}</span>}
-              {(r.links ?? []).map((l) => (
-                <Button key={l.url} size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => nav(l.url)}>{l.label}</Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
     </div>
+  )
+}
+
+function WarningCard({ a, index, onOpen }: { a: AnomalyItem; index: number; onOpen?: () => void }) {
+  const sev = SEV_ICON[a.severity]
+  const base = Math.max(1, a.baseline_median)
+  const change = Math.round(((a.value - a.baseline_median) / base) * 100)
+  const max = Math.max(a.value, a.baseline_median, 1)
+  const Wrapper = onOpen ? 'button' : 'div'
+  return (
+    <li className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-backwards duration-400" style={{ animationDelay: `${index * 70}ms` }}>
+      <Wrapper type={onOpen ? 'button' : undefined} onClick={onOpen}
+        className={cn('flex w-full gap-3 rounded-lg border border-l-4 bg-card p-3 text-left transition-all', sev.ring, onOpen && 'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary')}>
+        <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', sev.cls)}>
+          {a.direction === 'up' ? <ArrowUpRight className="h-4 w-4" aria-label="up" /> : <ArrowDownRight className="h-4 w-4" aria-label="down" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="truncate text-sm font-medium">{a.scope}</p>
+            <span className="shrink-0 text-[11px] text-muted-foreground">week of {fmtDate(a.week)}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">{a.metric_label} {a.direction === 'up' ? 'jumped' : 'dropped'} <span className={cn('font-semibold tabular-nums', a.direction === 'up' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-300')}>{change > 0 ? '+' : ''}{change}%</span> against its own normal</p>
+          <div className="mt-2 space-y-1 text-[11px]">
+            <div className="flex items-center gap-2"><span className="w-14 shrink-0 text-muted-foreground">This week</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><div className={cn('h-full rounded-full transition-[width] duration-700 ease-out', a.direction === 'up' ? 'bg-emerald-500' : 'bg-red-500')} style={{ width: `${(a.value / max) * 100}%` }} /></div><span className="w-8 text-right font-semibold tabular-nums">{a.value}</span></div>
+            <div className="flex items-center gap-2"><span className="w-14 shrink-0 text-muted-foreground">Usual</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-muted-foreground/40 transition-[width] duration-700 ease-out" style={{ width: `${(a.baseline_median / max) * 100}%` }} /></div><span className="w-8 text-right tabular-nums text-muted-foreground">{Math.round(a.baseline_median)}</span></div>
+          </div>
+        </div>
+        <span className="hidden shrink-0 self-start rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground sm:inline" title="Robust z-score">z {a.z > 0 ? '+' : ''}{a.z.toFixed(1)}</span>
+      </Wrapper>
+    </li>
   )
 }
 

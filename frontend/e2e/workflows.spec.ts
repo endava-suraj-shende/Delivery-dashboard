@@ -79,7 +79,7 @@ test.describe('Delivery workflows', () => {
     await expect(page.getByTestId('narrative-card').getByText(/This period in one paragraph/)).toBeVisible()
   })
 
-  test('AI Insights: risk table, recommendations, assistant answer', async ({ page }) => {
+  test('AI Insights: risk table, recommendations, AI Assistant answer', async ({ page }) => {
     await login(page, ACCOUNTS.demoManager)
     await waitForData(page)
     await page.getByRole('link', { name: 'AI Insights' }).click()
@@ -94,8 +94,11 @@ test.describe('Delivery workflows', () => {
     await page.getByRole('tab', { name: /Recommended actions/ }).click()
     await expect(page.getByTestId('recommendations').or(page.getByText('Nothing to recommend'))).toBeVisible()
 
-    await page.getByRole('tab', { name: 'Ask' }).click()
-    await page.getByRole('button', { name: 'Who has the most blocked tickets?' }).click()
-    await expect(page.getByText(/understood as: people/)).toBeVisible({ timeout: 30_000 })
+    await page.getByTestId('assistant-launcher').click()
+    const panel = page.getByTestId('assistant-panel')
+    await panel.getByRole('button', { name: 'Who has the most blocked tickets?' }).click()
+    await expect(panel.getByText(/Most blocked tickets|Nobody has blocked/)).toBeVisible({ timeout: 30_000 })
+    await page.keyboard.press('Escape')
+    await expect(panel).toBeHidden()
   })
 })

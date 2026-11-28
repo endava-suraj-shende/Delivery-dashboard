@@ -25,6 +25,7 @@ import { HelpTip } from '@/components/ui/primitives'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { GlobalSearch } from '@/components/common/GlobalSearch'
+import { AiAssistant, AiAssistantButton } from '@/components/common/AiAssistant'
 import { useDataStatus } from '@/hooks/useData'
 import { useFilters } from '@/hooks/useFilters'
 import { useTheme } from '@/hooks/useTheme'
@@ -182,6 +183,7 @@ export function AppLayout() {
                 </div>
               </HelpTip>
             )}
+            <AiAssistantButton />
             {canRefresh && (
               <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
                 <RefreshCw className={cn(refresh.isPending && 'animate-spin')} /> Refresh data
@@ -214,6 +216,7 @@ export function AppLayout() {
             <Outlet />
           </div>
         </main>
+        <AiAssistant />
       </div>
     </div>
   )
