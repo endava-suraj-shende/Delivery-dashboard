@@ -97,9 +97,23 @@ export interface ReconRow {
   jira_url: string | null
   verdict: 'ok' | 'error' | 'warning' | 'info'
   flags: ReconFlag[]
+  workflow?: ReconWorkflow | null
+}
+
+export type ReconState = 'open' | 'acknowledged' | 'resolved' | 'ignored'
+export interface ReconWorkflow {
+  state: ReconState
+  note: string | null
+  codes: string[]
+  updated_by: string | null
+  updated_at: string | null
+  nudged_at: string | null
+  nudge_count: number
+  reopened?: boolean
 }
 
 export interface ReconSummary {
+  workflow?: { open: number; handled: number }
   compared: number
   matched: number
   errors: number
@@ -172,6 +186,8 @@ export const jiraLiveApi = {
   me: (base_url?: string) => api.get<{ site: string; display_name: string; email: string; account_id: string }>(`/jira/connections/me${q('', { base_url })}`).then((r) => r.data),
   sync: (force = false, board_id?: string) => api.post<JiraStatus>(`/jira/live/sync${q('', { force, board_id })}`).then((r) => r.data),
   reconciliation: (qs: string, includeMissing = true) => api.get<Reconciliation>(`/jira/live/reconciliation${q(qs, { include_missing: includeMissing })}`).then((r) => r.data),
+  setReconState: (body: { ticket_id: string; employee: string | null; state: ReconState; note?: string | null; codes: string[] }) => api.patch<ReconWorkflow>('/jira/live/reconciliation/items', body).then((r) => r.data),
+  nudge: (qs: string, employee: string, toEmail?: string) => api.post<{ sent: boolean; reason?: string; recipient: string; items: number }>(`/jira/live/reconciliation/nudge${q(qs)}`, { employee, to_email: toEmail || undefined }).then((r) => r.data),
   reconciliationFile: (fileId: string) => api.get<Reconciliation>(`/jira/live/reconciliation/file/${fileId}`).then((r) => r.data),
   issue: (key: string) => api.get<Record<string, unknown>>(`/jira/live/issues/${encodeURIComponent(key)}`).then((r) => r.data),
   lookup: () => api.get<{ items: Record<string, JiraIssueLite>; last_sync: string | null }>('/jira/live/lookup').then((r) => r.data),

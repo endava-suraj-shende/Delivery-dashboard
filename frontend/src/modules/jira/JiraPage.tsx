@@ -16,6 +16,7 @@ import { useFilters } from '@/hooks/useFilters'
 import { jiraApi, errorMessage } from '@/services/api'
 import { jiraLiveApi } from '@/services/jiraApi'
 import { ReconSummaryCards, ReconciliationTable } from '@/components/common/JiraReconciliation'
+import { NudgeButton } from '@/components/common/ReconWorkflow'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useToast } from '@/components/ui/toast'
 import { Link } from 'react-router-dom'
@@ -196,15 +197,21 @@ export default function JiraPage() {
                     <Card>
                       <CardHeader>
                         <CardTitle>Discrepancies by employee</CardTitle>
-                        <CardDescription>Rows reported in the bi-weekly sheets that disagree with Jira, plus Jira issues missing from the sheets.</CardDescription>
+                        <CardDescription>Rows reported in the bi-weekly sheets that disagree with Jira, plus Jira issues missing from the sheets.{recon.data.summary.workflow ? ` ${recon.data.summary.workflow.open} open, ${recon.data.summary.workflow.handled} handled.` : ''} Nudge e-mails a person their open items.</CardDescription>
                       </CardHeader>
                       <CardContent className="flex flex-wrap gap-2">
-                        {recon.data.by_employee.filter((e) => e.error + e.warning + e.info > 0).map((e) => (
-                          <Button key={e.employee} variant="outline" size="sm" className="h-auto flex-col items-start py-1.5" onClick={() => nav(`/employees/${encodeURIComponent(e.employee)}${qs}`)}>
-                            <span className="font-medium">{e.employee}</span>
-                            <span className="text-[11px] text-muted-foreground">{e.ok} ok | <span className="text-red-600">{e.error} conflicts</span> | <span className="text-orange-600">{e.warning} warnings</span> | {e.info} info</span>
-                          </Button>
-                        ))}
+                        {recon.data.by_employee.filter((e) => e.error + e.warning + e.info > 0).map((e) => {
+                          const openCount = recon.data!.items.filter((r) => r.employee === e.employee && (r.verdict === 'error' || r.verdict === 'warning') && (r.workflow?.state ?? 'open') !== 'resolved' && (r.workflow?.state ?? 'open') !== 'ignored').length
+                          return (
+                            <div key={e.employee} className="flex items-stretch gap-1 rounded-md border p-1">
+                              <Button variant="ghost" size="sm" className="h-auto flex-col items-start py-1" onClick={() => nav(`/employees/${encodeURIComponent(e.employee)}${qs}`)}>
+                                <span className="font-medium">{e.employee}</span>
+                                <span className="text-[11px] text-muted-foreground">{e.ok} ok | <span className="text-red-600">{e.error} conflicts</span> | <span className="text-orange-600">{e.warning} warnings</span> | {e.info} info{openCount !== e.error + e.warning ? ` | ${openCount} open` : ''}</span>
+                              </Button>
+                              <NudgeButton employee={e.employee} openCount={openCount} className="self-center" />
+                            </div>
+                          )
+                        })}
                       </CardContent>
                     </Card>
                   )}

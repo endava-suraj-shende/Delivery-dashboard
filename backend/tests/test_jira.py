@@ -321,3 +321,45 @@ def test_jira_api_when_not_configured(client):
     assert r.status_code == 409 and r.json()["error"] == "jira_not_configured"
     ex = client.get("/api/v1/dashboard/executive", params={"preset": "all"}).json()
     assert ex["jira"] is None
+
+
+def test_reconciliation_workflow_states_and_nudge(jira_client_api, monkeypatch):
+    c = jira_client_api
+    c.post("/api/v1/jira/connections/boards", json={"url": "https://fake.atlassian.net/jira/software/c/projects/A/boards/921"})
+    c.post("/api/v1/jira/live/sync")
+    rec = c.get("/api/v1/jira/live/reconciliation", params={"preset": "all"}).json()
+    wf = rec["summary"]["workflow"]
+    flagged = [r for r in rec["items"] if r["verdict"] != "ok"]
+    assert wf["open"] == len(flagged) and wf["handled"] == 0 and all(r["workflow"]["state"] == "open" for r in flagged)
+    assert all(r["workflow"] is None for r in rec["items"] if r["verdict"] == "ok")
+    target = flagged[0]
+    body = {"ticket_id": target["ticket_id"], "employee": target["employee"], "state": "resolved", "note": "Sheet corrected", "codes": [f["code"] for f in target["flags"]]}
+    assert c.patch("/api/v1/jira/live/reconciliation/items", json=body).json()["state"] == "resolved"
+    assert c.patch("/api/v1/jira/live/reconciliation/items", json={**body, "state": "bogus"}).status_code == 400
+    rec2 = c.get("/api/v1/jira/live/reconciliation", params={"preset": "all"}).json()
+    row = next(r for r in rec2["items"] if r["ticket_id"] == target["ticket_id"] and r["employee"] == target["employee"])
+    assert row["workflow"]["state"] == "resolved" and row["workflow"]["note"] == "Sheet corrected"
+    assert rec2["summary"]["workflow"] == {"open": len(flagged) - 1, "handled": 1}
+    # findings changed since it was resolved -> shown as re-opened
+    import app.services.container as cm
+    from sqlalchemy import select
+    from app.db.models import ReconciliationItem
+    cont = cm.get_container()
+    with cont.db() as db:
+        item = db.execute(select(ReconciliationItem)).scalars().first()
+        item.codes = ["something_else"]
+        db.commit()
+    rec3 = c.get("/api/v1/jira/live/reconciliation", params={"preset": "all"}).json()
+    row = next(r for r in rec3["items"] if r["ticket_id"] == target["ticket_id"] and r["employee"] == target["employee"])
+    assert row["workflow"]["state"] == "open" and row["workflow"].get("reopened") is True
+    # nudge: e-mail captured, nudge counters recorded
+    sent = {}
+    monkeypatch.setattr(cont.email, "send", lambda to, subject, html_body, text_body, attachments=None: sent.update(to=to, subject=subject, text=text_body) or {"sent": True})
+    emp = flagged[0]["employee"]
+    r = c.post("/api/v1/jira/live/reconciliation/nudge", params={"preset": "all"}, json={"employee": emp, "to_email": "person@endava.com"}).json()
+    assert r["sent"] is True and r["recipient"] == "person@endava.com" and r["items"] >= 1
+    assert sent["to"] == ["person@endava.com"] and target["ticket_id"] in sent["text"]
+    rec4 = c.get("/api/v1/jira/live/reconciliation", params={"preset": "all"}).json()
+    nudged = [x for x in rec4["items"] if x["employee"] == emp and x["workflow"] and x["workflow"]["nudge_count"] >= 1]
+    assert nudged
+    assert c.post("/api/v1/jira/live/reconciliation/nudge", params={"preset": "all"}, json={"employee": "Nobody Here"}).status_code == 400

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -347,3 +347,32 @@ class SavedView(Base):
     def to_dict(self) -> Dict[str, Any]:
         return {"id": self.id, "owner_id": self.owner_id, "name": self.name, "path": self.path, "query": self.query,
                 "shared": self.shared, "created_at": self.created_at.isoformat(), "updated_at": self.updated_at.isoformat()}
+
+
+RECON_STATES = ("open", "acknowledged", "resolved", "ignored")
+
+
+class ReconciliationItem(Base):
+    """Workflow state for one Excel-vs-Jira discrepancy (ticket + employee). The finding itself is recomputed live;
+    this row only carries what people did about it."""
+    __tablename__ = "reconciliation_items"
+    __table_args__ = (UniqueConstraint("workspace", "item_key", name="uq_reconciliation_items_ws_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workspace: Mapped[str] = mapped_column(String(16), nullable=False, default="real", index=True)
+    item_key: Mapped[str] = mapped_column(String(300), nullable=False, index=True)  # "<TICKET>|<employee lower>"
+    ticket_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    employee: Mapped[Optional[str]] = mapped_column(String(160), index=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    codes: Mapped[List[str]] = mapped_column(JSON, nullable=False, default=list)  # flag codes when last touched
+    updated_by: Mapped[Optional[str]] = mapped_column(String(32), ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    nudged_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    nudge_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"state": self.state, "note": self.note, "codes": self.codes or [], "updated_by": self.updated_by,
+                "updated_at": self.updated_at.isoformat(), "nudged_at": self.nudged_at.isoformat() if self.nudged_at else None,
+                "nudge_count": self.nudge_count}

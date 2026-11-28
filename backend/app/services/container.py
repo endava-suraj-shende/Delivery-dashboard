@@ -55,6 +55,8 @@ class Container:
         from app.services.forecast_service import ForecastService
         self.forecast = ForecastService(self.analytics)
         self.reports.narrative, self.reports.forecast = self.narrative, self.forecast
+        from app.services.reconciliation_workflow import ReconciliationWorkflow
+        self.recon_workflow = ReconciliationWorkflow(self, workspace="real")
         from app.services.schedule_service import ScheduleService
         self.schedules = ScheduleService(self)
         self.jira_pool = JiraClientPool(settings.jira_email, settings.jira_api_token, settings.jira_timeout_seconds,

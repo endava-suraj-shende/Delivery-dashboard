@@ -1,4 +1,4 @@
-﻿"""Live Jira integration endpoints: connections (boards), sync, reconciliation, user mapping."""
+"""Live Jira integration endpoints: connections (boards), sync, reconciliation, user mapping."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -269,16 +269,50 @@ def live_status(c: Container = Depends(_ws)) -> Dict[str, Any]:
 
 @router.get("/live/reconciliation")
 def reconciliation(include_missing: bool = Query(True), f: Filters = Depends(filters),
-                         c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+                   c: Container = Depends(loaded_container), db=Depends(workspace_db)) -> Dict[str, Any]:
     rf = c.analytics.resolve_filters(f)
-    return {"period": c.analytics.period_info(rf, c.analytics.scope(rf)[2]), "filters": rf.to_dict(),
-            **c.jira.reconcile(rf, include_missing=include_missing)}
+    out = {"period": c.analytics.period_info(rf, c.analytics.scope(rf)[2]), "filters": rf.to_dict(),
+           **c.jira.reconcile(rf, include_missing=include_missing)}
+    return c.recon_workflow.decorate(db, out)
 
 
 @router.get("/live/reconciliation/file/{file_id}")
-def reconciliation_file(file_id: str, c: Container = Depends(loaded_container)) -> Dict[str, Any]:
+def reconciliation_file(file_id: str, c: Container = Depends(loaded_container), db=Depends(workspace_db)) -> Dict[str, Any]:
     c.excel.file_detail(file_id)  # 404 if unknown
-    return c.jira.reconcile(None, file_id=file_id, include_missing=False)
+    return c.recon_workflow.decorate(db, c.jira.reconcile(None, file_id=file_id, include_missing=False))
+
+
+class ReconState(BaseModel):
+    ticket_id: str = Field(..., min_length=1, max_length=64)
+    employee: Optional[str] = Field(None, max_length=160)
+    state: str
+    note: Optional[str] = Field(None, max_length=2000)
+    codes: List[str] = Field(default_factory=list)
+
+
+class ReconNudge(BaseModel):
+    employee: str = Field(..., min_length=1, max_length=160)
+    to_email: Optional[str] = None
+
+
+@router.patch("/live/reconciliation/items")
+def reconciliation_set_state(body: ReconState, user: User = Depends(managers), c: Container = Depends(loaded_container),
+                             db=Depends(workspace_db)) -> Dict[str, Any]:
+    """Acknowledge / resolve / ignore one discrepancy (ticket + employee) with an optional note."""
+    out = c.recon_workflow.set_state(db, user, body.ticket_id, body.employee, body.state, body.note, body.codes)
+    db.commit()
+    return out
+
+
+@router.post("/live/reconciliation/nudge")
+def reconciliation_nudge(body: ReconNudge, f: Filters = Depends(filters), user: User = Depends(managers),
+                         c: Container = Depends(loaded_container), db=Depends(workspace_db)) -> Dict[str, Any]:
+    """E-mail one person their open discrepancies for the current filter scope."""
+    rf = c.analytics.resolve_filters(f)
+    findings = c.recon_workflow.decorate(db, c.jira.reconcile(rf, include_missing=True))["items"]
+    out = c.recon_workflow.nudge(db, user, body.employee, findings, body.to_email)
+    db.commit()
+    return out
 
 
 @router.get("/live/issues/{key}")

@@ -8,6 +8,7 @@ import { DataTable } from '@/components/common/DataTable'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard'
 import { EmployeeLink, useCategoryLookup } from '@/components/common/Tables'
 import { fmtDate, truncate, cn } from '@/lib/utils'
+import { ReconWorkflowCell } from '@/components/common/ReconWorkflow'
 import type { ReconRow, ReconSummary } from '@/services/jiraApi'
 
 export const VERDICT_META = {
@@ -125,6 +126,7 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
           </ul>
         ),
       },
+      { id: 'workflow', accessorFn: (r) => r.workflow?.state ?? (r.verdict === 'ok' ? '' : 'open'), header: 'Action', size: 150, cell: ({ row }) => <ReconWorkflowCell row={row.original} />, filterFn: 'equalsString' },
       { id: 'summary', accessorFn: (r) => r.work_details ?? r.jira_summary ?? '', header: 'Summary', cell: ({ row }) => <HelpTip text={row.original.work_details ?? row.original.jira_summary ?? ''}><span>{truncate(row.original.work_details ?? row.original.jira_summary, 70)}</span></HelpTip>, size: 260 },
       { accessorKey: 'file_name', header: 'Source', cell: ({ row }) => (row.original.file_name ? <span className="text-[11px] text-muted-foreground whitespace-nowrap">{truncate(row.original.file_name, 26)} | r{row.original.source_row}</span> : <span className="text-[11px] text-muted-foreground">Jira only</span>) },
     )
@@ -141,6 +143,7 @@ export function ReconciliationTable({ items, onTicket, hideEmployee, pageSize = 
       columnFilters={[
         { id: 'verdict', label: 'Result', options: Object.entries(VERDICT_META).map(([k, v]) => ({ value: k, label: v.label })) },
         { id: 'excel_status', label: 'Excel status', options: Object.values(lookup.work_status).map((c) => ({ value: c.key, label: c.label })) },
+        { id: 'workflow', label: 'Action state', options: [{ value: 'open', label: 'Open' }, { value: 'acknowledged', label: 'Acknowledged' }, { value: 'resolved', label: 'Resolved' }, { value: 'ignored', label: 'Ignored' }] },
       ]}
       emptyTitle="Nothing to compare"
       emptyDescription="No Excel rows with Jira ids in the selected scope, or Jira has not been synced yet."

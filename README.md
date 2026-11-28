@@ -432,7 +432,7 @@ All endpoints live under `/api/v1` and are documented interactively at `/docs`. 
 | `sprints` | `GET /sprints`, `GET /sprints/{name}` | viewers |
 | `jira` | `summary`, `status-distribution`, `tickets`, `tickets/{id}` | viewers |
 | `jira/connections` | `boards`, `test`, `discover`, `me`, `redeem-code`, people picker | DM (own) / superuser |
-| `jira/live` | `sync`, `status`, `reconciliation`, `reconciliation/file/{id}`, `issues/{key}`, `users`, `user-map` | viewers |
+| `jira/live` | `sync`, `status`, `reconciliation` (+ `items` PATCH, `nudge` POST), `reconciliation/file/{id}`, `issues/{key}`, `users`, `user-map` | viewers / managers |
 | `deployment` | `dev/summary`, `production/summary`, `trends` | viewers |
 | `reports` | `types`, `generate`, `employee`, `team`, `project`, `management`, `download/{id}`, `schedules` (CRUD, `preview`, `send-now`) | DM / admin |
 | `config` | `status` (GET/PUT, `mapping`, `reset`), `app` | superuser |
